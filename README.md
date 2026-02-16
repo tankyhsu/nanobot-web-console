@@ -1,6 +1,8 @@
 # nanobot Web Console
 
-A single-file web console for [nanobot](https://github.com/pinkponk/nanobot) — an AI Agent framework. Provides real-time chat, session history browsing, and knowledge base management through a clean, responsive interface.
+A single-file web console for [nanobot](https://github.com/pinkponk/nanobot) — an AI Agent framework. Provides real-time chat, session history browsing, and optionally integrates with [OpenViking](https://github.com/pinkponk/openviking) for knowledge base management.
+
+> **Note:** The Knowledge Base feature requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking) — a separate integration project. Without it, the console works perfectly for session browsing and live chat; the Knowledge button and Viking status indicator will simply be hidden when `/health` reports `viking_ready: false`.
 
 ## Screenshots
 
@@ -20,9 +22,9 @@ Click any tool event to expand and see full details:
 
 ![Expanded Tools](screenshots/04-livechat-expanded.png)
 
-### Knowledge Base (OpenViking)
+### Knowledge Base (OpenViking) — Optional
 
-Browse the knowledge base directory structure and search for content:
+Requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking). Browse the knowledge base directory structure and search for content:
 
 | File Browser | Semantic Search |
 |-------------|-----------------|
@@ -41,10 +43,11 @@ Browse the knowledge base directory structure and search for content:
   - Tool result events with success/error status (expandable)
   - Content persists when navigating away and back
   - WebSocket stays connected in background
-- **Knowledge Base** — OpenViking integration
+- **Knowledge Base** *(optional, requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking))*
   - Browse `viking://` virtual filesystem
   - Semantic search across resources and memories
   - Breadcrumb navigation
+  - Auto-hidden when Viking is not available
 - **Dark / Light Theme** — Toggle with persistence via localStorage
 - **Mobile Responsive** — Hamburger menu, touch-friendly, iOS zoom prevention
 - **URL Routing** — Deep link to sessions or modes
@@ -73,10 +76,12 @@ The console expects the following endpoints on the same origin:
 | `/api/sessions/{name}` | GET | Get session messages `[{role, content, timestamp}]` |
 | `/api/sessions/{name}` | DELETE | Delete a session |
 | `/ws/chat` | WebSocket | Streaming chat (see protocol below) |
-| `/api/viking/status` | GET | Knowledge base status |
-| `/api/viking/search` | POST | Semantic search `{query, limit}` |
-| `/api/viking/find` | POST | Deep search `{query, limit}` |
-| `/api/viking/ls` | GET | List directory `?uri=viking://resources/` |
+| `/api/viking/status` | GET | Knowledge base status *(optional)* |
+| `/api/viking/search` | POST | Semantic search *(optional)* |
+| `/api/viking/find` | POST | Deep search *(optional)* |
+| `/api/viking/ls` | GET | List directory *(optional)* |
+
+> Viking endpoints are only needed if you integrate [nanobot-viking](https://github.com/tankyhsu/nanobot-viking). Without them, set `viking_ready: false` in `/health` and the Knowledge Base UI will be hidden.
 
 ### WebSocket Protocol
 
