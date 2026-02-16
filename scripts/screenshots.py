@@ -30,6 +30,36 @@ MOCK_HEALTH = {"status": "ok", "agent_ready": True, "viking_ready": True}
 
 MOCK_VIKING_LS = {"result": "\u76ee\u5f55 viking://resources/:\n  \U0001f4c1 rpi_services (0b)\n  \U0001f4c1 project_docs (0b)\n  \U0001f4c4 setup_guide.md (4523b)\n  \U0001f4c4 network_config.md (2108b)"}
 
+MOCK_CONFIG = {
+    "model": "openai/MiniMax-M2.5",
+    "max_tokens": 8192,
+    "temperature": 0.7,
+    "max_tool_iterations": 50,
+    "provider": "openai",
+    "workspace": "/root/.nanobot/workspace",
+    "tools": [
+        {"name": "read_file", "description": "Read the contents of a file at the given path.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+        {"name": "write_file", "description": "Write content to a file. Creates parent directories if needed.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
+        {"name": "edit_file", "description": "Edit a file by replacing old_text with new_text.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["path", "old_text", "new_text"]}},
+        {"name": "list_dir", "description": "List the contents of a directory.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+        {"name": "exec", "description": "Execute a shell command and return its output.", "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
+        {"name": "web_search", "description": "Search the web. Returns titles, URLs, and snippets.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "count": {"type": "integer"}}, "required": ["query"]}},
+        {"name": "web_fetch", "description": "Fetch URL and extract readable content (HTML to markdown).", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
+        {"name": "message", "description": "Send a message to the user via a channel.", "parameters": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
+        {"name": "spawn", "description": "Spawn a subagent to handle a background task.", "parameters": {"type": "object", "properties": {"task": {"type": "string"}}, "required": ["task"]}},
+        {"name": "cron", "description": "Schedule reminders and recurring tasks.", "parameters": {"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}},
+    ],
+    "skills": [
+        {"name": "memos-logger", "description": "Auto-log quick memos to Memos service when user says keywords like 'note this' or 'quick memo'.", "content": "# Memos Logger\n\nAutomatically creates public memos..."},
+    ],
+    "prompt_files": {
+        "SOUL.md": "# Soul\n\nI am an AI assistant running on Raspberry Pi 4B...\n\n## Personality\n- Pragmatic and efficient\n- Explain intent before executing\n- Ask when uncertain\n- Default to Chinese\n",
+        "AGENTS.md": "# Agent Guidelines\n\n## Environment\n- Host: Raspberry Pi 4B, 4GB RAM\n- Identity: root user\n\n## Workflow\n1. Understand intent\n2. Explain planned action\n3. Execute with appropriate tools\n4. Report results clearly\n",
+        "USER.md": "# User Info\n\n- Language: Chinese\n- Tech level: Advanced Linux user\n- Communication: Direct, no fluff\n",
+    },
+    "memory": "# Long-term Memory\n\n## System Config\n- OS: Debian Trixie arm64\n- LLM: MiniMax M2.5\n- Feishu channel enabled\n",
+}
+
 MOCK_VIKING_SEARCH = {"result": "\u641c\u7d22 'raspberry pi' \u627e\u5230 3 \u6761\u7ed3\u679c:\n\n[\u8d44\u6e90:rpi_services] Raspberry Pi 4B running core services including nanobot AI agent, voice assistant, and OpenViking knowledge base. Hardware: BCM2711 SoC, 4GB RAM, 32GB SD card.\n\n[\u8d44\u6e90:setup_guide] Initial setup guide covering system configuration, service deployment, network settings, and Tailscale VPN integration.\n\n[\u8bb0\u5fc6] The device runs Debian 13 (Trixie) with kernel 6.12, connected via both LAN and Tailscale VPN."}
 
 
@@ -55,6 +85,10 @@ async def mock_route(route, request):
         await route.fulfill(json=MOCK_VIKING_LS)
     elif "/api/viking/search" in url or "/api/viking/find" in url:
         await route.fulfill(json=MOCK_VIKING_SEARCH)
+    elif "/api/config" in url and request.method == "GET":
+        await route.fulfill(json=MOCK_CONFIG)
+    elif "/api/config" in url and request.method == "POST":
+        await route.fulfill(json={"status": "updated", "changed": ["model"], "note": "Restart to apply"})
     else:
         await route.fulfill(json={})
 
@@ -162,7 +196,15 @@ async def take_screenshots():
         await page.screenshot(path=f"{SCREENSHOTS_DIR}/06-viking-search.png")
         print("6/7 Viking search results")
 
-        # === 7. Mobile view with session ===
+        # === 7. Settings panel ===
+        await page.click('#vikingBtn')  # close viking
+        await page.wait_for_timeout(300)
+        await page.click('#settingsBtn')
+        await page.wait_for_timeout(1500)
+        await page.screenshot(path=f"{SCREENSHOTS_DIR}/07-settings.png")
+        print("7/8 Settings panel")
+
+        # === 8. Mobile view with session ===
         mobile = await browser.new_page(viewport={"width": 390, "height": 844})
         await mobile.route("**/api/**", mock_route)
         await mobile.route("**/health", mock_route)
@@ -178,8 +220,8 @@ async def take_screenshots():
         if len(items) >= 2:
             await items[1].click()
             await mobile.wait_for_timeout(1000)
-        await mobile.screenshot(path=f"{SCREENSHOTS_DIR}/07-mobile.png")
-        print("7/7 Mobile view")
+        await mobile.screenshot(path=f"{SCREENSHOTS_DIR}/08-mobile.png")
+        print("8/8 Mobile view")
 
         await browser.close()
         print(f"\nAll screenshots saved to {SCREENSHOTS_DIR}/")
