@@ -2,9 +2,15 @@
 
 **[English](README.md) | [中文](README_CN.md)**
 
-一个为 [nanobot](https://github.com/pinkponk/nanobot) AI Agent 框架打造的单文件 Web 控制台。支持实时对话、会话历史浏览、Agent 配置管理，并可选集成 [OpenViking](https://github.com/pinkponk/openviking) 知识库。
+为 [nanobot](https://github.com/HKUDS/nanobot) 打造的 Web 控制台 + API 服务。nanobot 是一个超轻量的个人 AI Agent 框架，但它本身只提供 CLI 和渠道交互（飞书、Telegram 等），**没有 HTTP API，也没有 Web 界面**。
 
-> **说明：** 知识库功能需要 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking) 集成项目。不安装时，控制台的会话浏览、实时对话、设置面板等功能完全正常使用，知识库按钮会在 Viking 不可用时自动隐藏。
+本项目补齐了这块：一个 FastAPI 服务（`server.py`）+ 一个单文件 Web 控制台（`index.html`），提供：
+
+- 浏览器实时对话，流式展示工具调用过程
+- HTTP API 和 OpenAI 兼容接口，方便外部集成
+- 跨渠道会话历史浏览
+- Agent 配置管理（模型、工具、技能、提示词）
+- 可选的知识库集成（[nanobot-viking](https://github.com/tankyhsu/nanobot-viking)）
 
 ## 截图
 
@@ -16,11 +22,11 @@
 
 ### 实时对话（工具调用流式展示）
 
-实时 WebSocket 对话，展示 Agent 的思考过程、工具调用和执行结果：
+WebSocket 实时对话，展示 Agent 的思考过程、工具调用和执行结果：
 
 ![实时对话](screenshots/03-livechat-tools.png)
 
-点击任意工具事件卡片可展开查看完整细节：
+点击工具事件卡片可展开查看完整细节：
 
 ![展开详情](screenshots/04-livechat-expanded.png)
 
@@ -32,7 +38,7 @@
 
 ### 知识库浏览器（OpenViking）— 可选
 
-需要 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)。浏览知识库目录结构和语义搜索：
+需要 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)：
 
 | 文件浏览 | 语义搜索 |
 |----------|----------|
@@ -42,102 +48,263 @@
 
 ![移动端](screenshots/08-mobile.png)
 
+## 架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 server.py (FastAPI)                   │
+│                                                       │
+│  GET  /              ──→ 提供 index.html (控制台)     │
+│  GET  /health        ──→ 健康检查                     │
+│  GET  /api/sessions  ──→ 列出所有会话 (JSONL)         │
+│  POST /api/chat      ──→ 简单对话（带情绪检测）        │
+│  POST /v1/chat/completions ──→ OpenAI 兼容 API       │
+│  WS   /ws/chat       ──→ 流式对话 + 事件推送          │
+│  GET  /api/config    ──→ 模型、工具、技能、提示词      │
+│  POST /api/config    ──→ 更新模型配置                  │
+│  /api/viking/*       ──→ 知识库（可选）               │
+│                                                       │
+│  导入 nanobot 内部模块:                                │
+│    AgentLoop, MessageBus, SessionManager              │
+│    load_config, CronService                           │
+│    VikingService（可选）                               │
+└─────────────────────────────────────────────────────┘
+```
+
+`server.py` 是 nanobot Python 内部和 Web 之间的桥梁。启动时初始化 nanobot 的 `AgentLoop`、`MessageBus`、`SessionManager`、`CronService`，然后暴露为 HTTP/WebSocket 接口。Web 控制台（`index.html`）通过这些接口交互。
+
+## 快速开始
+
+### 前置要求
+
+- Python 3.11+
+- [nanobot](https://github.com/HKUDS/nanobot) 已安装并配置好（`~/.nanobot/config.json`）
+
+```bash
+pip install nanobot-ai
+```
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/tankyhsu/nanobot-web-console.git
+cd nanobot-web-console
+```
+
+### 2. 安装依赖
+
+```bash
+pip install fastapi uvicorn pydantic
+```
+
+### 3. 运行
+
+```bash
+python server.py
+```
+
+浏览器打开 `http://localhost:18790`。
+
+### 4. 注册为系统服务（可选）
+
+```ini
+# /etc/systemd/system/nanobot-api.service
+[Unit]
+Description=nanobot API Server
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /path/to/server.py
+WorkingDirectory=/path/to/nanobot-web-console
+Environment=HOME=/root
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now nanobot-api
+```
+
+## 与 nanobot 的关系
+
+### nanobot 提供什么（以及不提供什么）
+
+[nanobot](https://github.com/HKUDS/nanobot) 是一个 ~4000 行的 AI Agent 框架，提供：
+
+- `AgentLoop` — LLM 推理循环 + 工具执行
+- `MessageBus` — 内部消息路由
+- `SessionManager` — JSONL 格式会话持久化
+- `CronService` — 定时任务
+- 渠道 — 飞书、Telegram、Discord、Slack、QQ、邮件等
+- 工具 — exec、read_file、write_file、web_search 等
+- 技能 — 自定义自动化脚本
+- 记忆 — 长期记忆系统
+
+nanobot **不提供**的：
+- 没有 HTTP API 服务
+- 没有 Web UI
+- 没有 WebSocket 流式接口
+- 没有 OpenAI 兼容端点
+
+本项目补齐了这些。
+
+### server.py 做了什么
+
+`server.py` 导入 nanobot 的内部模块，用 FastAPI 封装：
+
+```python
+from nanobot.config.loader import load_config
+from nanobot.agent.loop import AgentLoop
+from nanobot.bus.queue import MessageBus
+from nanobot.session.manager import SessionManager
+from nanobot.cron.service import CronService
+```
+
+启动时（`lifespan`）：
+1. 加载 nanobot 配置（`~/.nanobot/config.json`）
+2. 创建 LLM provider（通过 `LiteLLMProvider`）
+3. 初始化 `AgentLoop`（含所有工具和设置）
+4. 可选启动 `VikingService`（知识库）
+5. 启动 `CronService`（定时任务）
+
+### nanobot config.json 结构
+
+`server.py` 读取标准的 nanobot 配置 `~/.nanobot/config.json`：
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.nanobot/workspace",
+      "model": "openai/your-model-name",
+      "maxTokens": 8192,
+      "temperature": 0.7,
+      "maxToolIterations": 50
+    }
+  },
+  "providers": {
+    "openai": {
+      "apiKey": "your-api-key",
+      "apiBase": "https://api.example.com/v1"
+    }
+  },
+  "tools": {
+    "web": { "search": { "apiKey": "brave-api-key", "maxResults": 5 } },
+    "exec": { "timeout": 60 }
+  }
+}
+```
+
+不需要额外配置，`server.py` 复用 nanobot 的全部配置。
+
 ## 功能特性
 
-- **会话历史** — 浏览所有对话记录，支持按渠道筛选（飞书/API/WebSocket/CLI）
-- **实时对话** — WebSocket 实时流式对话
+### Web 控制台 (index.html)
+
+- **会话历史** — 浏览所有对话记录，按渠道筛选（飞书/API/WS/CLI）
+- **实时对话** — WebSocket 流式对话
   - 思考状态指示（含迭代次数）
   - 工具调用事件卡片（可展开查看参数和结果）
-  - 对话内容在页面切换时保持不丢失
-  - WebSocket 后台保持连接
+  - 切换页面时对话内容不丢失
 - **设置面板** — 查看和管理 Agent 配置
-  - 模型设置（模型名称、温度、最大 token、最大迭代次数）
+  - 模型设置（模型名、温度、max tokens、最大迭代）
   - 已注册工具列表及参数说明
-  - 技能列表（可展开查看详情）
+  - 技能列表（可展开详情）
   - 系统提示词编辑器（SOUL.md、AGENTS.md、USER.md）
   - 长期记忆查看
 - **知识库** *（可选，需 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)）*
   - 浏览 `viking://` 虚拟文件系统
   - 跨资源和记忆的语义搜索
-  - 面包屑导航
-  - Viking 不可用时自动隐藏
-- **深色 / 浅色主题** — 一键切换，通过 localStorage 持久化
-- **移动端适配** — 汉堡菜单、触控友好、iOS 缩放防护
-- **URL 路由** — 深链接支持（`?session=xxx`、`?mode=live`、`?mode=viking`、`?mode=settings`）
-- **会话管理** — 支持删除会话（带确认对话框）
-- **输入法兼容** — 中日韩输入法回车键不会误触发发送
-- **Markdown 渲染** — 完整 GFM 支持（表格、代码块、列表等）
+- **深色 / 浅色主题**
+- **移动端适配**
+- **URL 路由** — `?session=xxx`、`?mode=live`、`?mode=viking`、`?mode=settings`
+- **输入法兼容** — 中日韩输入法回车不误触发
 
-## 与 nanobot 集成
+### API 服务 (server.py)
 
-### 前提条件
+- **简单对话** — `POST /api/chat`，带情绪检测
+- **OpenAI 兼容** — `POST /v1/chat/completions`，方便接入期望 OpenAI API 的工具
+- **WebSocket 流式** — `WS /ws/chat`，推送 thinking、tool_call、tool_result、final 事件
+- **会话管理** — REST API 列出、查看、删除会话
+- **配置 API** — 查看/更新模型设置，浏览工具和技能
+- **RAG 增强** — 自动用知识库上下文丰富用户消息（Viking 可用时）
+- **情绪检测** — 基于关键词的情绪标注，适配 TTS/表情头像
+- **TTS 友好输出** — 自动去除 Markdown 格式，适合语音朗读
 
-- 一个运行中的 [nanobot](https://github.com/pinkponk/nanobot) 实例
-- 一个暴露 HTTP/WebSocket 接口的 FastAPI 服务（`nanobot-api`）
+## API 参考
 
-### 必需的 API 接口
+### HTTP 端点
 
-| 接口 | 方法 | 说明 |
+| 端点 | 方法 | 说明 |
 |------|------|------|
-| `/health` | GET | 健康检查，返回 `{agent_ready, viking_ready}` |
-| `/api/sessions` | GET | 列出所有会话 `[{name, display, messages, updated}]` |
-| `/api/sessions/{name}` | GET | 获取会话消息 `[{role, content, timestamp}]` |
+| `/` | GET | Web 控制台 |
+| `/health` | GET | `{status, agent_ready, viking_ready}` |
+| `/api/sessions` | GET | 列出所有会话 |
+| `/api/sessions/{name}` | GET | 获取会话消息 |
 | `/api/sessions/{name}` | DELETE | 删除会话 |
-| `/ws/chat` | WebSocket | 流式对话（协议见下） |
-| `/api/config` | GET | 获取 Agent 配置（模型、工具、技能、提示词） |
+| `/api/chat` | POST | 简单对话（带情绪） |
+| `/v1/chat/completions` | POST | OpenAI 兼容对话 |
+| `/v1/models` | GET | 列出可用模型 |
+| `/api/config` | GET | Agent 配置（模型、工具、技能、提示词、记忆） |
 | `/api/config` | POST | 更新模型配置 |
 | `/api/config/prompt` | POST | 更新系统提示词文件 |
-| `/api/viking/*` | * | 知识库接口 *（可选）* |
+| `/api/viking/*` | * | 知识库 *（可选）* |
 
-### WebSocket 协议
+### WebSocket 协议 (`/ws/chat`)
 
 客户端发送：
 ```json
 {"message": "用户消息", "session": "ws:device-id", "constraint": "可选约束"}
 ```
 
-服务端依次推送事件：
+服务端推送事件：
 ```json
-{"type": "thinking", "iteration": 1}
-{"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}"}
-{"type": "tool_result", "name": "exec", "result": "Filesystem  Size  Used..."}
-{"type": "final", "content": "磁盘使用情况是...", "session": "ws:device-id"}
-{"type": "error", "message": "错误描述"}
+{"type": "thinking", "iteration": 1, "emotion": "thinking"}
+{"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}", "emotion": "gear"}
+{"type": "tool_result", "name": "exec", "result": "...", "emotion": "cool"}
+{"type": "final", "content": "...", "emotion": "happy", "session": "ws:device-id"}
 ```
 
-### 部署
+### 简单对话 (`POST /api/chat`)
 
-控制台是一个单 HTML 文件，作为 FastAPI 的根路由提供服务即可：
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-
-app = FastAPI()
-
-@app.get("/", response_class=HTMLResponse)
-async def console_page():
-    return open("index.html").read()
+```bash
+curl -X POST http://localhost:18790/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "正在运行哪些服务？", "session": "api:test"}'
 ```
 
-也可以放在任何静态文件服务器 / 反向代理后面，确保 API 接口在同源即可。
+## 可选：知识库集成
 
-## 技术栈
+需要 RAG（检索增强生成），添加 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)：
 
-- **零依赖** — 单 HTML 文件，无需构建
-- [marked.js](https://github.com/markedjs/marked)（CDN）— Markdown 渲染
-- 原生 JavaScript — 无框架
-- CSS 自定义属性 — 主题系统
-- WebSocket API — 流式通信
+```bash
+# 把 viking_service.py 复制到 server.py 同目录
+cp /path/to/nanobot-viking/viking_service.py .
+```
+
+`server.py` 启动时会自动检测并初始化 `VikingService`。Viking 不可用时服务正常运行，只是没有知识库功能。
 
 ## 文件结构
 
 ```
-index.html          # 完整的 Web 控制台（单文件）
+server.py           # FastAPI 服务 — nanobot 与 Web 之间的桥梁
+index.html          # Web 控制台（单文件，零依赖）
 scripts/
-  screenshots.py    # 截图生成脚本（playwright）
-screenshots/        # README 示例截图
+  screenshots.py    # 截图生成脚本（playwright，用于 README）
+screenshots/        # 示例截图
 ```
+
+## 技术栈
+
+- **server.py** — FastAPI + Uvicorn，直接导入 nanobot 内部模块
+- **index.html** — 单 HTML 文件，无构建步骤，无 npm
+  - [marked.js](https://github.com/markedjs/marked)（CDN）Markdown 渲染
+  - 原生 JavaScript，CSS 自定义属性实现主题
+  - WebSocket API 实现流式通信
 
 ## SiliconFlow 免费模型
 

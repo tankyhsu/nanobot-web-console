@@ -2,9 +2,15 @@
 
 **[English](README.md) | [中文](README_CN.md)**
 
-A single-file web console for [nanobot](https://github.com/pinkponk/nanobot) — an AI Agent framework. Provides real-time chat, session history browsing, agent configuration management, and optionally integrates with [OpenViking](https://github.com/pinkponk/openviking) for knowledge base management.
+A web console + API server for [nanobot](https://github.com/HKUDS/nanobot) — an ultra-lightweight personal AI assistant framework. This project provides everything nanobot lacks out of the box: an HTTP/WebSocket API layer and a full-featured web UI.
 
-> **Note:** The Knowledge Base feature requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking) — a separate integration project. Without it, the console works perfectly for session browsing, live chat, and settings; the Knowledge button simply hides when Viking is not available.
+**nanobot** itself only provides a CLI and channel-based interaction (Feishu, Telegram, Discord, etc.). This project wraps it with a FastAPI server (`server.py`) and a single-file web console (`index.html`), enabling:
+
+- Browser-based real-time chat with streaming tool execution visualization
+- HTTP API and OpenAI-compatible endpoint for external integrations
+- Session history browsing across all channels
+- Agent configuration management (model, tools, skills, prompts)
+- Optional knowledge base integration via [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)
 
 ## Screenshots
 
@@ -42,15 +48,174 @@ Requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking). Browse th
 
 ![Mobile](screenshots/08-mobile.png)
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 server.py (FastAPI)                   │
+│                                                       │
+│  GET  /              ──→ Serve index.html (Console)  │
+│  GET  /health        ──→ Health check                │
+│  GET  /api/sessions  ──→ List all sessions (JSONL)   │
+│  POST /api/chat      ──→ Simple chat (with emotion)  │
+│  POST /v1/chat/completions ──→ OpenAI-compatible API │
+│  WS   /ws/chat       ──→ Streaming chat + events     │
+│  GET  /api/config    ──→ Model, tools, skills, prompts│
+│  POST /api/config    ──→ Update model config          │
+│  /api/viking/*       ──→ Knowledge base (optional)   │
+│                                                       │
+│  Imports:                                             │
+│    nanobot.agent.loop.AgentLoop                       │
+│    nanobot.bus.queue.MessageBus                       │
+│    nanobot.session.manager.SessionManager             │
+│    nanobot.config.loader.load_config                  │
+│    viking_service.VikingService (optional)            │
+└─────────────────────────────────────────────────────┘
+```
+
+`server.py` is the bridge between nanobot's Python internals and the web. It initializes nanobot's `AgentLoop`, `MessageBus`, `SessionManager`, and `CronService`, then exposes them as HTTP/WebSocket endpoints. The web console (`index.html`) talks to these endpoints.
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- [nanobot](https://github.com/HKUDS/nanobot) installed and configured (`~/.nanobot/config.json`)
+
+```bash
+pip install nanobot-ai
+```
+
+### 1. Clone this repo
+
+```bash
+git clone https://github.com/tankyhsu/nanobot-web-console.git
+cd nanobot-web-console
+```
+
+### 2. Install dependencies
+
+```bash
+pip install fastapi uvicorn pydantic
+```
+
+### 3. Run
+
+```bash
+python server.py
+```
+
+Open `http://localhost:18790` in your browser.
+
+### 4. Run as systemd service (optional)
+
+```ini
+# /etc/systemd/system/nanobot-api.service
+[Unit]
+Description=nanobot API Server
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /path/to/server.py
+WorkingDirectory=/path/to/nanobot-web-console
+Environment=HOME=/root
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now nanobot-api
+```
+
+## How It Works with nanobot
+
+### What nanobot provides (and what it doesn't)
+
+[nanobot](https://github.com/HKUDS/nanobot) is a ~4,000-line AI agent framework. It provides:
+
+- `AgentLoop` — LLM reasoning loop with tool execution
+- `MessageBus` — Internal message routing
+- `SessionManager` — JSONL-based conversation persistence
+- `CronService` — Scheduled tasks
+- Channels — Feishu, Telegram, Discord, Slack, QQ, Email, etc.
+- Tools — exec, read_file, write_file, web_search, etc.
+- Skills — Custom automation scripts
+- Memory — Long-term memory system
+
+What nanobot does **NOT** provide:
+- No HTTP API server
+- No Web UI
+- No WebSocket streaming interface
+- No OpenAI-compatible endpoint
+
+This project fills that gap.
+
+### What server.py does
+
+`server.py` imports nanobot's internal modules and wraps them in a FastAPI server:
+
+```python
+from nanobot.config.loader import load_config
+from nanobot.agent.loop import AgentLoop
+from nanobot.bus.queue import MessageBus
+from nanobot.session.manager import SessionManager
+from nanobot.cron.service import CronService
+```
+
+On startup (`lifespan`), it:
+1. Loads nanobot config from `~/.nanobot/config.json`
+2. Creates an LLM provider (via `LiteLLMProvider`)
+3. Initializes `AgentLoop` with all tools and settings
+4. Optionally starts `VikingService` for knowledge base
+5. Starts `CronService` for scheduled tasks
+
+### nanobot config.json structure
+
+`server.py` reads the standard nanobot config at `~/.nanobot/config.json`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.nanobot/workspace",
+      "model": "openai/your-model-name",
+      "maxTokens": 8192,
+      "temperature": 0.7,
+      "maxToolIterations": 50
+    }
+  },
+  "providers": {
+    "openai": {
+      "apiKey": "your-api-key",
+      "apiBase": "https://api.example.com/v1"
+    }
+  },
+  "tools": {
+    "web": { "search": { "apiKey": "brave-api-key", "maxResults": 5 } },
+    "exec": { "timeout": 60 },
+    "restrictToWorkspace": false
+  },
+  "channels": {
+    "feishu": { "enabled": true, "appId": "...", "appSecret": "..." }
+  }
+}
+```
+
+No additional configuration is needed — `server.py` reuses everything from nanobot's config.
+
 ## Features
+
+### Web Console (index.html)
 
 - **Session History** — Browse all chat sessions with channel filtering (Feishu/API/WS/CLI)
 - **Live Chat** — Real-time WebSocket conversation with streaming event display
   - Thinking indicators with iteration count
-  - Tool call events with icon, name, and argument summary (expandable)
-  - Tool result events with success/error status (expandable)
+  - Tool call events with expandable argument details and results
   - Content persists when navigating away and back
-  - WebSocket stays connected in background
 - **Settings Panel** — View and manage agent configuration
   - Model settings (model, temperature, max tokens, max iterations)
   - Registered tools list with parameters
@@ -60,85 +225,102 @@ Requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking). Browse th
 - **Knowledge Base** *(optional, requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking))*
   - Browse `viking://` virtual filesystem
   - Semantic search across resources and memories
-  - Breadcrumb navigation
-  - Auto-hidden when Viking is not available
-- **Dark / Light Theme** — Toggle with persistence via localStorage
-- **Mobile Responsive** — Hamburger menu, touch-friendly, iOS zoom prevention
-- **URL Routing** — Deep link to sessions or modes (`?session=xxx`, `?mode=live`, `?mode=viking`, `?mode=settings`)
-- **Session Management** — Delete sessions with confirmation dialog
-- **IME Compatible** — Chinese/Japanese/Korean input method support
-- **Markdown Rendering** — Full GFM support in chat bubbles (tables, code blocks, lists, etc.)
+- **Dark / Light Theme** — Toggle with localStorage persistence
+- **Mobile Responsive** — Hamburger menu, touch-friendly
+- **URL Routing** — `?session=xxx`, `?mode=live`, `?mode=viking`, `?mode=settings`
+- **IME Compatible** — CJK input method support (Enter key doesn't trigger send during composition)
 
-## Integration with nanobot
+### API Server (server.py)
 
-### Prerequisites
+- **Simple Chat** — `POST /api/chat` with emotion detection
+- **OpenAI-compatible** — `POST /v1/chat/completions` for integration with tools expecting OpenAI API
+- **WebSocket Streaming** — `WS /ws/chat` with thinking, tool_call, tool_result, final events
+- **Session Management** — List, view, delete sessions via REST API
+- **Config API** — View/update model settings, browse tools and skills
+- **RAG Augmentation** — Automatically enriches user messages with knowledge base context (when Viking is available)
+- **Emotion Detection** — Keyword-based emotion tagging for TTS/avatar integration
+- **TTS-friendly Output** — Strips markdown formatting for voice output
 
-- A running [nanobot](https://github.com/pinkponk/nanobot) instance
-- A FastAPI wrapper server (`nanobot-api`) that exposes the required HTTP/WebSocket endpoints
+## API Reference
 
-### Required API Endpoints
+### HTTP Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check, returns `{agent_ready, viking_ready}` |
-| `/api/sessions` | GET | List all sessions `[{name, display, messages, updated}]` |
-| `/api/sessions/{name}` | GET | Get session messages `[{role, content, timestamp}]` |
+| `/` | GET | Web console (index.html) |
+| `/health` | GET | `{status, agent_ready, viking_ready}` |
+| `/api/sessions` | GET | List all sessions |
+| `/api/sessions/{name}` | GET | Get session messages |
 | `/api/sessions/{name}` | DELETE | Delete a session |
-| `/ws/chat` | WebSocket | Streaming chat (see protocol below) |
-| `/api/config` | GET | Get agent configuration (model, tools, skills, prompts) |
-| `/api/config` | POST | Update model configuration |
+| `/api/chat` | POST | Simple chat with emotion |
+| `/v1/chat/completions` | POST | OpenAI-compatible chat |
+| `/v1/models` | GET | List available models |
+| `/api/config` | GET | Agent config (model, tools, skills, prompts, memory) |
+| `/api/config` | POST | Update model config |
 | `/api/config/prompt` | POST | Update system prompt file |
-| `/api/viking/*` | * | Knowledge base endpoints *(optional)* |
+| `/api/viking/*` | * | Knowledge base *(optional)* |
 
-### WebSocket Protocol
+### WebSocket Protocol (`/ws/chat`)
 
 Client sends:
 ```json
 {"message": "user text", "session": "ws:device-id", "constraint": "optional"}
 ```
 
-Server pushes events in order:
+Server pushes events:
 ```json
-{"type": "thinking", "iteration": 1}
-{"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}"}
-{"type": "tool_result", "name": "exec", "result": "Filesystem  Size  Used..."}
-{"type": "final", "content": "The disk usage is...", "session": "ws:device-id"}
-{"type": "error", "message": "error description"}
+{"type": "thinking", "iteration": 1, "emotion": "thinking"}
+{"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}", "emotion": "gear"}
+{"type": "tool_result", "name": "exec", "result": "...", "emotion": "cool"}
+{"type": "final", "content": "...", "emotion": "happy", "session": "ws:device-id"}
 ```
 
-### Deployment
+### Simple Chat (`POST /api/chat`)
 
-The console is a single HTML file. Serve it as the root route of your FastAPI app:
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-
-app = FastAPI()
-
-@app.get("/", response_class=HTMLResponse)
-async def console_page():
-    return open("index.html").read()
+```bash
+curl -X POST http://localhost:18790/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What services are running?", "session": "api:test"}'
 ```
 
-Or place it behind any static file server / reverse proxy — just ensure the API endpoints are on the same origin (or configure CORS).
+Response:
+```json
+{
+  "response": "Currently running services include...",
+  "session": "api:test",
+  "timestamp": 1739800000.0,
+  "emotion": "happy"
+}
+```
 
-## Tech Stack
+## Optional: Knowledge Base Integration
 
-- **Zero dependencies** — Single HTML file, no build step
-- [marked.js](https://github.com/markedjs/marked) (CDN) — Markdown rendering
-- Vanilla JavaScript — No framework
-- CSS Custom Properties — Theme system
-- WebSocket API — Streaming communication
+For RAG (Retrieval-Augmented Generation), add [nanobot-viking](https://github.com/tankyhsu/nanobot-viking):
+
+```bash
+# Copy viking_service.py to the same directory as server.py
+cp /path/to/nanobot-viking/viking_service.py .
+```
+
+`server.py` will automatically detect and initialize `VikingService` on startup. If Viking is not available, the server runs normally without it.
 
 ## File Structure
 
 ```
-index.html          # The complete web console (single file)
+server.py           # FastAPI server — the bridge between nanobot and the web
+index.html          # Web console UI (single file, zero dependencies)
 scripts/
-  screenshots.py    # Screenshot generation script (playwright)
-screenshots/        # Demo screenshots for README
+  screenshots.py    # Screenshot generation script (playwright, for README)
+screenshots/        # Demo screenshots
 ```
+
+## Tech Stack
+
+- **server.py** — FastAPI + Uvicorn, imports nanobot internals directly
+- **index.html** — Single HTML file, no build step, no npm
+  - [marked.js](https://github.com/markedjs/marked) (CDN) for Markdown rendering
+  - Vanilla JavaScript, CSS Custom Properties for theming
+  - WebSocket API for streaming
 
 ## SiliconFlow Free Models
 
