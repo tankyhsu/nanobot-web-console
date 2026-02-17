@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -264,12 +264,13 @@ a { color: var(--link); text-decoration: none; }
   <div class="sidebar-header">
     <h1>nanobot</h1>
     <div class="controls">
+      <button class="theme-btn" onclick="toggleLang()" id="langBtn" title="Language">EN</button>
       <button class="theme-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
     </div>
   </div>
-  <div class="status-bar" id="status">Connecting... <span id="vikingStatus"></span></div>
+  <div class="status-bar" id="status"><span data-i18n="connecting">Connecting...</span> <span id="vikingStatus"></span></div>
   <div class="tab-row">
-    <div class="tab active" onclick="filterSessions('all', this)">All</div>
+    <div class="tab active" onclick="filterSessions('all', this)" data-i18n="all">All</div>
     <div class="tab" onclick="filterSessions('feishu', this)">Feishu</div>
     <div class="tab" onclick="filterSessions('api', this)">API</div>
     <div class="tab" onclick="filterSessions('ws', this)">WS</div>
@@ -279,33 +280,195 @@ a { color: var(--link); text-decoration: none; }
 <div class="main">
   <div class="toolbar">
     <button class="menu-btn" onclick="toggleSidebar()" title="Menu">&#9776;</button>
-    <div class="title" id="chatTitle">Select a session</div>
-    <button onclick="openViking()" id="vikingBtn">Knowledge</button>
-    <button onclick="openLiveChat()" id="liveChatBtn">Live Chat</button>
-    <button onclick="openSettings()" id="settingsBtn">Settings</button>
+    <div class="title" id="chatTitle" data-i18n="selectSession">Select a session</div>
+    <button onclick="openViking()" id="vikingBtn" data-i18n="knowledge">Knowledge</button>
+    <button onclick="openLiveChat()" id="liveChatBtn" data-i18n="liveChat">Live Chat</button>
+    <button onclick="openSettings()" id="settingsBtn" data-i18n="settings">Settings</button>
   </div>
   <div class="chat-area" id="chatArea">
-    <div class="empty">Select a session or start a Live Chat</div>
+    <div class="empty" data-i18n="emptyHint">Select a session or start a Live Chat</div>
   </div>
   <div class="input-area" id="inputArea" style="display:none;">
-    <input type="text" id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)sendMsg()">
-    <button onclick="sendMsg()" id="sendBtn">Send</button>
+    <input type="text" id="msgInput" placeholder="Type a message..." data-i18n="typeMessage" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)sendMsg()">
+    <button onclick="sendMsg()" id="sendBtn" data-i18n="send">Send</button>
   </div>
 </div>
 
 <!-- Delete confirm dialog -->
 <div class="confirm-overlay" id="confirmOverlay" style="display:none;" onclick="if(event.target===this)closeConfirm()">
   <div class="confirm-box">
-    <h3>Delete Session</h3>
+    <h3 data-i18n="deleteSession">Delete Session</h3>
     <p id="confirmText">Are you sure?</p>
     <div class="btns">
-      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
-      <button class="btn-danger" onclick="confirmDelete()">Delete</button>
+      <button class="btn-cancel" onclick="closeConfirm()" data-i18n="cancel">Cancel</button>
+      <button class="btn-danger" onclick="confirmDelete()" data-i18n="delete">Delete</button>
     </div>
   </div>
 </div>
 
 <script>
+// --- i18n ---
+const I18N = {
+  en: {
+    connecting: 'Connecting...',
+    agentOnline: 'Agent Online',
+    agentLoading: 'Agent Loading...',
+    offline: 'Offline',
+    vikingOn: 'Viking ON',
+    vikingOff: 'Viking OFF',
+    all: 'All',
+    messages: 'messages',
+    selectSession: 'Select a session',
+    knowledge: 'Knowledge',
+    liveChat: 'Live Chat',
+    settings: 'Settings',
+    emptyHint: 'Select a session or start a Live Chat',
+    typeMessage: 'Type a message...',
+    send: 'Send',
+    deleteSession: 'Delete Session',
+    deleteConfirm: 'Delete session "{name}"? This cannot be undone.',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    sessionDeleted: 'Session deleted',
+    searchKB: 'Search knowledge base...',
+    search: 'Search',
+    loading: 'Loading...',
+    emptyDir: 'Empty directory',
+    noItems: 'No visible items',
+    searching: 'Searching...',
+    noResults: 'No results for "{query}"',
+    noResultsGeneric: 'No results',
+    vikingUnavailable: 'Viking is not available',
+    directory: 'Directory',
+    back: 'Back',
+    resources: 'resources',
+    modelConfig: 'Model Configuration',
+    model: 'Model',
+    provider: 'Provider',
+    temperature: 'Temperature',
+    maxTokens: 'Max Tokens',
+    maxIterations: 'Max Iterations',
+    saveConfig: 'Save Config',
+    savePrompt: 'Save Prompt',
+    tools: 'Tools',
+    skills: 'Skills',
+    systemPrompts: 'System Prompts',
+    memory: 'Memory',
+    noSkills: 'No skills configured',
+    noChanges: 'No changes',
+    loadingConfig: 'Loading configuration...',
+    failedLoadConfig: 'Failed to load config: ',
+    restartToApply: 'Restart service to apply.',
+    saved: 'Saved: ',
+    error: 'Error: ',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    thinking: 'Thinking... (iteration {n})',
+    empty: 'empty',
+    charsTotal: 'chars total',
+  },
+  zh: {
+    connecting: '连接中...',
+    agentOnline: 'Agent 在线',
+    agentLoading: 'Agent 加载中...',
+    offline: '离线',
+    vikingOn: 'Viking 已开启',
+    vikingOff: 'Viking 未开启',
+    all: '全部',
+    messages: '条消息',
+    selectSession: '选择一个会话',
+    knowledge: '知识库',
+    liveChat: '实时对话',
+    settings: '设置',
+    emptyHint: '选择一个会话或开始实时对话',
+    typeMessage: '输入消息...',
+    send: '发送',
+    deleteSession: '删除会话',
+    deleteConfirm: '确定删除会话 "{name}"？此操作不可撤销。',
+    cancel: '取消',
+    delete: '删除',
+    sessionDeleted: '会话已删除',
+    searchKB: '搜索知识库...',
+    search: '搜索',
+    loading: '加载中...',
+    emptyDir: '空目录',
+    noItems: '没有可见项目',
+    searching: '搜索中...',
+    noResults: '未找到 "{query}" 的相关结果',
+    noResultsGeneric: '无结果',
+    vikingUnavailable: 'Viking 不可用',
+    directory: '目录',
+    back: '返回',
+    resources: '资源',
+    modelConfig: '模型配置',
+    model: '模型',
+    provider: '服务商',
+    temperature: '温度',
+    maxTokens: '最大 Token',
+    maxIterations: '最大迭代',
+    saveConfig: '保存配置',
+    savePrompt: '保存提示词',
+    tools: '工具',
+    skills: '技能',
+    systemPrompts: '系统提示词',
+    memory: '记忆',
+    noSkills: '未配置技能',
+    noChanges: '无变更',
+    loadingConfig: '加载配置中...',
+    failedLoadConfig: '加载配置失败：',
+    restartToApply: '重启服务后生效。',
+    saved: '已保存：',
+    error: '错误：',
+    connected: '已连接',
+    disconnected: '已断开',
+    thinking: '思考中...（第 {n} 轮）',
+    empty: '空',
+    charsTotal: '字符',
+  }
+};
+
+let currentLang = localStorage.getItem('lang') || 'en';
+
+function t(key, params) {
+  let s = (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => { s = s.replace('{' + k + '}', v); });
+  }
+  return s;
+}
+
+function getLangLocale() {
+  return currentLang === 'zh' ? 'zh-CN' : 'en-US';
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'en' ? 'zh' : 'en';
+  localStorage.setItem('lang', currentLang);
+  document.getElementById('langBtn').textContent = currentLang === 'en' ? 'EN' : '中';
+  applyLang();
+}
+
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (el.tagName === 'INPUT') el.placeholder = t(key);
+    else el.textContent = t(key);
+  });
+  // Re-render dynamic content
+  renderSessions();
+  checkHealth();
+  if (isSettingsMode) renderSettings();
+  if (isVikingMode) renderVikingBrowser();
+}
+
+function initLang() {
+  if (!localStorage.getItem('lang')) {
+    currentLang = navigator.language.startsWith('zh') ? 'zh' : 'en';
+  }
+  document.getElementById('langBtn').textContent = currentLang === 'en' ? 'EN' : '中';
+  applyLang();
+}
+
 const API = location.origin;
 const WS_URL = `ws://${location.host}/ws/chat`;
 let sessions = [];
@@ -352,14 +515,14 @@ async function checkHealth() {
     const vs = document.getElementById('vikingStatus');
     const agentOk = d.agent_ready;
     el.className = 'status-bar' + (agentOk ? ' online' : '');
-    const agentText = agentOk ? 'Agent Online' : 'Agent Loading...';
+    const agentText = agentOk ? t('agentOnline') : t('agentLoading');
     const vikingOk = d.viking_ready;
     el.innerHTML = agentText + ' ' + (vikingOk
-      ? '<span class="viking-status vs-on">Viking ON</span>'
-      : '<span class="viking-status vs-off">Viking OFF</span>');
+      ? '<span class="viking-status vs-on">' + t('vikingOn') + '</span>'
+      : '<span class="viking-status vs-off">' + t('vikingOff') + '</span>');
   } catch(e) {
     const el = document.getElementById('status');
-    el.textContent = 'Offline';
+    el.textContent = t('offline');
     el.className = 'status-bar';
   }
 }
@@ -386,12 +549,12 @@ function renderSessions() {
   const filtered = currentFilter === 'all' ? sessions : sessions.filter(s => getChannel(s.name) === currentFilter);
   list.innerHTML = filtered.map(s => {
     const ch = getChannel(s.name);
-    const date = s.updated ? new Date(s.updated).toLocaleString('zh-CN') : '';
+    const date = s.updated ? new Date(s.updated).toLocaleString(getLangLocale()) : '';
     const active = s.name === currentSession ? ' active' : '';
     return `<div class="session-item${active}" onclick="loadChat('${s.name}')" id="s_${s.name}">
       <div class="session-info">
         <div class="session-name"><span class="session-channel ch-${ch}">${ch}</span>${s.display || s.name}</div>
-        <div class="session-meta">${s.messages} messages | ${date}</div>
+        <div class="session-meta">${s.messages} ${t('messages')} | ${date}</div>
       </div>
       <button class="del-btn" onclick="event.stopPropagation();askDelete('${s.name}')" title="Delete">&times;</button>
     </div>`;
@@ -408,7 +571,7 @@ function filterSessions(filter, el) {
 // --- Delete ---
 function askDelete(name) {
   deleteTarget = name;
-  document.getElementById('confirmText').textContent = `Delete session "${name}"? This cannot be undone.`;
+  document.getElementById('confirmText').textContent = t('deleteConfirm', {name});
   document.getElementById('confirmOverlay').style.display = 'flex';
 }
 function closeConfirm() {
@@ -421,8 +584,8 @@ async function confirmDelete() {
     await fetch(`${API}/api/sessions/${deleteTarget}`, { method: 'DELETE' });
     if (currentSession === deleteTarget) {
       currentSession = null;
-      document.getElementById('chatArea').innerHTML = '<div class="empty">Session deleted</div>';
-      document.getElementById('chatTitle').textContent = 'Select a session';
+      document.getElementById('chatArea').innerHTML = '<div class="empty">' + t('sessionDeleted') + '</div>';
+      document.getElementById('chatTitle').textContent = t('selectSession');
     }
     await loadSessions();
   } catch(e) { console.error(e); }
@@ -466,7 +629,7 @@ async function loadChat(name) {
     document.getElementById('chatTitle').textContent = name;
     area.innerHTML = msgs.map(m => {
       if (!m.role || m.role === '_type') return '';
-      const time = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN') : '';
+      const time = m.timestamp ? new Date(m.timestamp).toLocaleString(getLangLocale()) : '';
       const content = m.role === 'assistant' ? renderMd(m.content) : escHtml(m.content);
       return `<div class="msg ${m.role}">
         <div class="bubble">${content}</div>
@@ -492,7 +655,7 @@ function openLiveChat() {
   if (isLiveChat) {
     btn.classList.add('active');
     input.style.display = 'flex';
-    document.getElementById('chatTitle').textContent = 'Live Chat';
+    document.getElementById('chatTitle').textContent = t('liveChat');
     const area = document.getElementById('chatArea');
     // Restore previous live chat content if any
     if (liveChatHtml) {
@@ -513,8 +676,8 @@ function openLiveChat() {
     input.style.display = 'none';
     // Save live chat content before leaving (keep WS alive)
     liveChatHtml = document.getElementById('chatArea').innerHTML;
-    document.getElementById('chatArea').innerHTML = '<div class="empty">Select a session or start a Live Chat</div>';
-    document.getElementById('chatTitle').textContent = 'Select a session';
+    document.getElementById('chatArea').innerHTML = '<div class="empty">' + t('emptyHint') + '</div>';
+    document.getElementById('chatTitle').textContent = t('selectSession');
     updateUrl(null);
   }
 }
@@ -522,11 +685,11 @@ function openLiveChat() {
 function connectWS() {
   if (ws) ws.close();
   ws = new WebSocket(WS_URL);
-  ws.onopen = () => appendEvent('Connected', 'ev-thinking');
+  ws.onopen = () => appendEvent(t('connected'), 'ev-thinking');
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
     if (data.type === 'thinking') {
-      appendEvent(`Thinking... (iteration ${data.iteration})`, 'ev-thinking');
+      appendEvent(t('thinking', {n: data.iteration}), 'ev-thinking');
     } else if (data.type === 'tool_call') {
       appendToolCall(data.name, data.arguments);
     } else if (data.type === 'tool_result') {
@@ -534,13 +697,13 @@ function connectWS() {
     } else if (data.type === 'final') {
       appendBotMsg(data.content);
     } else if (data.type === 'error') {
-      appendEvent(`Error: ${data.message}`, 'ev-tool_result');
+      appendEvent(t('error') + data.message, 'ev-tool_result');
     }
     if (isLiveChat) {
       document.getElementById('chatArea').scrollTop = document.getElementById('chatArea').scrollHeight;
     }
   };
-  ws.onclose = () => appendEvent('Disconnected', 'ev-thinking');
+  ws.onclose = () => appendEvent(t('disconnected'), 'ev-thinking');
 }
 
 function sendMsg() {
@@ -553,7 +716,7 @@ function sendMsg() {
 }
 
 function appendUserMsg(text) {
-  const html = `<div class="msg user"><div class="bubble">${escHtml(text)}</div><div class="time">${new Date().toLocaleTimeString('zh-CN')}</div></div>`;
+  const html = `<div class="msg user"><div class="bubble">${escHtml(text)}</div><div class="time">${new Date().toLocaleTimeString(getLangLocale())}</div></div>`;
   if (isLiveChat) {
     const area = document.getElementById('chatArea');
     area.insertAdjacentHTML('beforeend', html);
@@ -563,7 +726,7 @@ function appendUserMsg(text) {
 }
 
 function appendBotMsg(text) {
-  const html = `<div class="msg assistant"><div class="bubble">${renderMd(text)}</div><div class="time">${new Date().toLocaleTimeString('zh-CN')}</div></div>`;
+  const html = `<div class="msg assistant"><div class="bubble">${renderMd(text)}</div><div class="time">${new Date().toLocaleTimeString(getLangLocale())}</div></div>`;
   if (isLiveChat) {
     document.getElementById('chatArea').insertAdjacentHTML('beforeend', html);
   }
@@ -615,10 +778,10 @@ function formatToolArgs(argsStr) {
 }
 
 function formatToolResult(result) {
-  if (!result) return '<i>empty</i>';
+  if (!result) return '<i>' + t('empty') + '</i>';
   const s = String(result);
   if (s.length <= 500) return escHtml(s);
-  return escHtml(s.substring(0, 500)) + '\n<span style="opacity:0.5">... (' + s.length + ' chars total)</span>';
+  return escHtml(s.substring(0, 500)) + '\n<span style="opacity:0.5">... (' + s.length + ' ' + t('charsTotal') + ')</span>';
 }
 
 function getResultSummary(result) {
@@ -719,27 +882,27 @@ function openSettings() {
     liveBtn.classList.remove('active');
     vikBtn.classList.remove('active');
     document.getElementById('inputArea').style.display = 'none';
-    document.getElementById('chatTitle').textContent = 'Settings';
+    document.getElementById('chatTitle').textContent = t('settings');
     updateUrl({ mode: 'settings' });
     closeSidebar();
     loadSettings();
   } else {
     btn.classList.remove('active');
-    document.getElementById('chatArea').innerHTML = '<div class="empty">Select a session or start a Live Chat</div>';
-    document.getElementById('chatTitle').textContent = 'Select a session';
+    document.getElementById('chatArea').innerHTML = '<div class="empty">' + t('emptyHint') + '</div>';
+    document.getElementById('chatTitle').textContent = t('selectSession');
     updateUrl(null);
   }
 }
 
 async function loadSettings() {
   const area = document.getElementById('chatArea');
-  area.innerHTML = '<div class="empty">Loading configuration...</div>';
+  area.innerHTML = '<div class="empty">' + t('loadingConfig') + '</div>';
   try {
     const r = await fetch(API + '/api/config');
     settingsData = await r.json();
     renderSettings();
   } catch(e) {
-    area.innerHTML = '<div class="empty">Failed to load config: ' + escHtml(e.message) + '</div>';
+    area.innerHTML = '<div class="empty">' + t('failedLoadConfig') + escHtml(e.message) + '</div>';
   }
 }
 
@@ -768,7 +931,7 @@ function renderSettings() {
     '<div class="sk-name">' + escHtml(s.name) + '</div>' +
     '<div class="sk-desc">' + escHtml(s.description) + '</div>' +
     '</div>'
-  ).join('') || '<div style="color:var(--text-dim);font-size:13px">No skills configured</div>';
+  ).join('') || '<div style="color:var(--text-dim);font-size:13px">' + t('noSkills') + '</div>';
 
   const promptNames = Object.keys(d.prompt_files || {});
   const firstPrompt = promptNames[0] || '';
@@ -781,37 +944,37 @@ function renderSettings() {
     '<div class="settings-panel">' +
 
     '<div class="settings-section">' +
-    '<h3>Model Configuration</h3>' +
+    '<h3>' + t('modelConfig') + '</h3>' +
     '<div class="settings-grid">' +
-    '<label>Model</label><input id="cfgModel" value="' + escHtml(d.model || '') + '">' +
-    '<label>Provider</label><input value="' + escHtml(d.provider || '') + '" disabled>' +
-    '<label>Temperature</label><input id="cfgTemp" type="number" step="0.1" min="0" max="2" value="' + (d.temperature || 0.7) + '">' +
-    '<label>Max Tokens</label><input id="cfgMaxTokens" type="number" step="1024" min="1024" value="' + (d.max_tokens || 8192) + '">' +
-    '<label>Max Iterations</label><input id="cfgMaxIter" type="number" min="1" max="100" value="' + (d.max_tool_iterations || 50) + '">' +
+    '<label>' + t('model') + '</label><input id="cfgModel" value="' + escHtml(d.model || '') + '">' +
+    '<label>' + t('provider') + '</label><input value="' + escHtml(d.provider || '') + '" disabled>' +
+    '<label>' + t('temperature') + '</label><input id="cfgTemp" type="number" step="0.1" min="0" max="2" value="' + (d.temperature || 0.7) + '">' +
+    '<label>' + t('maxTokens') + '</label><input id="cfgMaxTokens" type="number" step="1024" min="1024" value="' + (d.max_tokens || 8192) + '">' +
+    '<label>' + t('maxIterations') + '</label><input id="cfgMaxIter" type="number" min="1" max="100" value="' + (d.max_tool_iterations || 50) + '">' +
     '</div>' +
-    '<button class="settings-save" onclick="saveModelConfig()">Save Config</button>' +
+    '<button class="settings-save" onclick="saveModelConfig()">' + t('saveConfig') + '</button>' +
     '<div class="settings-msg" id="cfgMsg"></div>' +
     '</div>' +
 
     '<div class="settings-section">' +
-    '<h3>Tools (' + (d.tools || []).length + ')</h3>' +
+    '<h3>' + t('tools') + ' (' + (d.tools || []).length + ')</h3>' +
     toolsHtml +
     '</div>' +
 
     '<div class="settings-section">' +
-    '<h3>Skills (' + (d.skills || []).length + ')</h3>' +
+    '<h3>' + t('skills') + ' (' + (d.skills || []).length + ')</h3>' +
     '<div id="skillsList">' + skillsHtml + '</div>' +
     '</div>' +
 
     '<div class="settings-section">' +
-    '<h3>System Prompts</h3>' +
+    '<h3>' + t('systemPrompts') + '</h3>' +
     '<div class="prompt-tabs" id="promptTabs">' + promptTabsHtml + '</div>' +
     '<textarea class="prompt-editor" id="promptEditor" data-file="' + escHtml(firstPrompt) + '">' + escHtml(firstContent) + '</textarea>' +
-    '<button class="settings-save" onclick="savePromptFile()">Save Prompt</button>' +
+    '<button class="settings-save" onclick="savePromptFile()">' + t('savePrompt') + '</button>' +
     '<div class="settings-msg" id="promptMsg"></div>' +
     '</div>' +
 
-    (d.memory ? '<div class="settings-section"><h3>Memory</h3><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--pre-bg);padding:10px;border-radius:6px">' + escHtml(d.memory) + '</pre></div>' : '') +
+    (d.memory ? '<div class="settings-section"><h3>' + t('memory') + '</h3><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--pre-bg);padding:10px;border-radius:6px">' + escHtml(d.memory) + '</pre></div>' : '') +
 
     '</div>';
 }
@@ -827,7 +990,7 @@ function showSkillDetail(idx) {
     return;
   }
   area.innerHTML =
-    '<button class="viking-back-btn" onclick="renderSettings()">Back</button>' +
+    '<button class="viking-back-btn" onclick="renderSettings()">' + t('back') + '</button>' +
     '<div class="skill-detail">' + renderMd(skill.content || skill.description) + '</div>';
 }
 
@@ -856,20 +1019,20 @@ async function saveModelConfig() {
   if (!isNaN(temp) && temp !== settingsData.temperature) body.temperature = temp;
   if (!isNaN(maxTokens) && maxTokens !== settingsData.max_tokens) body.max_tokens = maxTokens;
   if (!isNaN(maxIter) && maxIter !== settingsData.max_tool_iterations) body.max_tool_iterations = maxIter;
-  if (Object.keys(body).length === 0) { msg.textContent = 'No changes'; msg.className = 'settings-msg'; return; }
+  if (Object.keys(body).length === 0) { msg.textContent = t('noChanges'); msg.className = 'settings-msg'; return; }
   try {
     btn.disabled = true;
     const r = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     const result = await r.json();
     if (result.status === 'updated') {
-      msg.textContent = 'Saved: ' + result.changed.join(', ') + '. Restart service to apply.';
+      msg.textContent = t('saved') + result.changed.join(', ') + '. ' + t('restartToApply');
       msg.className = 'settings-msg ok';
     } else {
-      msg.textContent = result.detail || 'No changes';
+      msg.textContent = result.detail || t('noChanges');
       msg.className = 'settings-msg';
     }
   } catch(e) {
-    msg.textContent = 'Error: ' + e.message;
+    msg.textContent = t('error') + e.message;
     msg.className = 'settings-msg err';
   } finally { btn.disabled = false; }
 }
@@ -888,15 +1051,15 @@ async function savePromptFile() {
     });
     const result = await r.json();
     if (result.status === 'updated') {
-      msg.textContent = 'Saved ' + filename + ' (' + result.size + ' bytes)';
+      msg.textContent = t('saved') + filename + ' (' + result.size + ' bytes)';
       msg.className = 'settings-msg ok';
       if (settingsData && settingsData.prompt_files) settingsData.prompt_files[filename] = content;
     } else {
-      msg.textContent = result.detail || 'Error';
+      msg.textContent = result.detail || t('error');
       msg.className = 'settings-msg err';
     }
   } catch(e) {
-    msg.textContent = 'Error: ' + e.message;
+    msg.textContent = t('error') + e.message;
     msg.className = 'settings-msg err';
   }
 }
@@ -922,14 +1085,14 @@ function openViking() {
     btn.classList.add('active');
     liveBtn.classList.remove('active');
     document.getElementById('inputArea').style.display = 'none';
-    document.getElementById('chatTitle').textContent = 'Knowledge Base';
+    document.getElementById('chatTitle').textContent = t('knowledge');
     updateUrl({ mode: 'viking' });
     closeSidebar();
     renderVikingBrowser();
   } else {
     btn.classList.remove('active');
-    document.getElementById('chatArea').innerHTML = '<div class="empty">Select a session or start a Live Chat</div>';
-    document.getElementById('chatTitle').textContent = 'Select a session';
+    document.getElementById('chatArea').innerHTML = '<div class="empty">' + t('emptyHint') + '</div>';
+    document.getElementById('chatTitle').textContent = t('selectSession');
     updateUrl(null);
   }
 }
@@ -939,12 +1102,12 @@ function renderVikingBrowser() {
   area.innerHTML = `
     <div class="viking-panel">
       <div class="viking-search">
-        <input type="text" id="vikingSearchInput" placeholder="Search knowledge base..." onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)vikingSearch()">
-        <button onclick="vikingSearch()">Search</button>
+        <input type="text" id="vikingSearchInput" placeholder="${t('searchKB')}" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)vikingSearch()">
+        <button onclick="vikingSearch()">${t('search')}</button>
       </div>
       <div class="viking-breadcrumb" id="vikingBreadcrumb"></div>
       <div class="viking-content" id="vikingContent">
-        <div class="viking-empty">Loading...</div>
+        <div class="viking-empty">${t('loading')}</div>
       </div>
     </div>`;
   vikingLs(vikingCurrentUri);
@@ -955,7 +1118,7 @@ function buildBreadcrumb(uri) {
   if (!bc) return;
   // Parse uri like viking://resources/foo/bar/
   const parts = uri.replace('viking://', '').split('/').filter(Boolean);
-  let html = '<a onclick="vikingLs(\'viking://resources/\')">resources</a>';
+  let html = '<a onclick="vikingLs(\'viking://resources/\')">' + t('resources') + '</a>';
   let path = 'viking://resources/';
   for (let i = 1; i < parts.length; i++) {
     path += parts[i] + '/';
@@ -970,19 +1133,19 @@ async function vikingLs(uri) {
   buildBreadcrumb(uri);
   const content = document.getElementById('vikingContent');
   if (!content) return;
-  content.innerHTML = '<div class="viking-empty">Loading...</div>';
+  content.innerHTML = '<div class="viking-empty">' + t('loading') + '</div>';
   try {
     const r = await fetch(`${API}/api/viking/ls?uri=${encodeURIComponent(uri)}`);
     const d = await r.json();
     const result = d.result || '';
     if (result.includes('disabled') || result.includes('not initialized')) {
-      content.innerHTML = '<div class="viking-empty">Viking is not available</div>';
+      content.innerHTML = '<div class="viking-empty">' + t('vikingUnavailable') + '</div>';
       return;
     }
     // Parse the text result from viking_service.ls()
     const lines = result.split('\n').slice(1); // skip header
     if (lines.length === 0 || result.includes('empty')) {
-      content.innerHTML = '<div class="viking-empty">Empty directory</div>';
+      content.innerHTML = '<div class="viking-empty">' + t('emptyDir') + '</div>';
       return;
     }
     content.innerHTML = lines.map(line => {
@@ -998,11 +1161,11 @@ async function vikingLs(uri) {
       return `<div class="viking-item" onclick="${onclick}">
         <span class="vi-icon">${icon}</span>
         <span class="vi-name">${escHtml(name)}</span>
-        <div class="vi-meta">${isDir ? 'Directory' : formatSize(parseInt(size))}</div>
+        <div class="vi-meta">${isDir ? t('directory') : formatSize(parseInt(size))}</div>
       </div>`;
-    }).filter(Boolean).join('') || '<div class="viking-empty">No visible items</div>';
+    }).filter(Boolean).join('') || '<div class="viking-empty">' + t('noItems') + '</div>';
   } catch(e) {
-    content.innerHTML = `<div class="viking-empty">Error: ${escHtml(e.message)}</div>`;
+    content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
   }
 }
 
@@ -1015,7 +1178,7 @@ function formatSize(bytes) {
 async function vikingReadResource(uri) {
   const content = document.getElementById('vikingContent');
   if (!content) return;
-  content.innerHTML = '<div class="viking-empty">Loading...</div>';
+  content.innerHTML = '<div class="viking-empty">' + t('loading') + '</div>';
   try {
     // Try to get abstract first, then full read
     const [absR, readR] = await Promise.allSettled([
@@ -1031,13 +1194,13 @@ async function vikingReadResource(uri) {
     const name = uri.split('/').filter(Boolean).pop();
     content.innerHTML = `
       <div class="viking-detail">
-        <button class="viking-back-btn" onclick="vikingLs('${vikingCurrentUri.replace(/[^/]+\/?$/, '')}')">Back</button>
+        <button class="viking-back-btn" onclick="vikingLs('${vikingCurrentUri.replace(/[^/]+\/?$/, '')}')">${t('back')}</button>
         <h3>${escHtml(name)}</h3>
         <div class="vd-meta">URI: ${escHtml(uri)}</div>
         <div class="vd-body">${escHtml(name)} - Resource details loaded from Viking.</div>
       </div>`;
   } catch(e) {
-    content.innerHTML = `<div class="viking-empty">Error: ${escHtml(e.message)}</div>`;
+    content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
   }
 }
 
@@ -1048,7 +1211,7 @@ async function vikingSearch() {
   if (!query) return;
   const content = document.getElementById('vikingContent');
   if (!content) return;
-  content.innerHTML = '<div class="viking-empty">Searching...</div>';
+  content.innerHTML = '<div class="viking-empty">' + t('searching') + '</div>';
   const bc = document.getElementById('vikingBreadcrumb');
   if (bc) bc.innerHTML = `Search: "${escHtml(query)}"`;
   try {
@@ -1060,13 +1223,13 @@ async function vikingSearch() {
     const d = await r.json();
     const result = d.result || '';
     if (result.includes('no result') || result.includes('无结果')) {
-      content.innerHTML = `<div class="viking-empty">No results for "${escHtml(query)}"</div>`;
+      content.innerHTML = '<div class="viking-empty">' + t('noResults', {query}) + '</div>';
       return;
     }
     // Parse search results
     const blocks = result.split('\n\n').slice(1); // skip header
     if (blocks.length === 0) {
-      content.innerHTML = `<div class="viking-empty">No results</div>`;
+      content.innerHTML = '<div class="viking-empty">' + t('noResultsGeneric') + '</div>';
       return;
     }
     content.innerHTML = blocks.map(block => {
@@ -1080,7 +1243,7 @@ async function vikingSearch() {
       </div>`;
     }).join('');
   } catch(e) {
-    content.innerHTML = `<div class="viking-empty">Search error: ${escHtml(e.message)}</div>`;
+    content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
   }
 }
 
@@ -1112,6 +1275,7 @@ function closeSidebar() {
 
 // --- Init ---
 initTheme();
+initLang();
 checkHealth();
 loadSessions().then(() => {
   // URL routing: navigate to session/mode from URL params
