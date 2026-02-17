@@ -330,6 +330,23 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 
 <img src="screenshots/siliconflow-qr.png" alt="SiliconFlow QR Code" width="200">
 
+## Changelog
+
+### v0.0.2
+
+- **i18n support** — Chinese/English toggle with auto-detection of browser language. All UI text is translatable. Language preference persists in localStorage.
+
+### v0.0.1
+
+- Initial release: web console (`index.html`) + API server (`server.py`)
+- Session history browsing with channel filtering
+- Live chat with streaming tool event visualization
+- Settings panel (model config, tools, skills, prompt editor, memory viewer)
+- Knowledge base browser and semantic search (optional, via nanobot-viking)
+- Dark/light theme toggle
+- Mobile responsive layout
+- URL routing and IME-compatible input
+
 ## License
 
 MIT

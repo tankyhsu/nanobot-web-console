@@ -314,6 +314,23 @@ screenshots/        # 示例截图
 
 <img src="screenshots/siliconflow-qr.png" alt="SiliconFlow 二维码" width="200">
 
+## 更新日志
+
+### v0.0.2
+
+- **国际化支持** — 中英文一键切换，自动检测浏览器语言。所有 UI 文本均可翻译，语言偏好通过 localStorage 持久化。
+
+### v0.0.1
+
+- 首次发布：Web 控制台（`index.html`）+ API 服务（`server.py`）
+- 会话历史浏览，按渠道筛选
+- 实时对话，流式展示工具调用过程
+- 设置面板（模型配置、工具、技能、提示词编辑器、记忆查看）
+- 知识库浏览器和语义搜索（可选，需 nanobot-viking）
+- 深色/浅色主题切换
+- 移动端适配
+- URL 路由和输入法兼容
+
 ## 许可证
 
 MIT
