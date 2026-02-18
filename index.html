@@ -366,6 +366,7 @@ const I18N = {
     thinking: 'Thinking... (iteration {n})',
     empty: 'empty',
     charsTotal: 'chars total',
+    reconnecting: 'Reconnecting...',
   },
   zh: {
     connecting: '连接中...',
@@ -424,6 +425,7 @@ const I18N = {
     thinking: '思考中...（第 {n} 轮）',
     empty: '空',
     charsTotal: '字符',
+    reconnecting: '重连中...',
   }
 };
 
@@ -475,6 +477,8 @@ let sessions = [];
 let currentFilter = 'all';
 let currentSession = null;
 let ws = null;
+let wsReconnectTimer = null;
+let wsReconnectDelay = 1000;
 let isLiveChat = false;
 let liveChatHtml = '';  // persisted live chat content
 let deleteTarget = null;
@@ -674,6 +678,7 @@ function openLiveChat() {
   } else {
     btn.classList.remove('active');
     input.style.display = 'none';
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
     // Save live chat content before leaving (keep WS alive)
     liveChatHtml = document.getElementById('chatArea').innerHTML;
     document.getElementById('chatArea').innerHTML = '<div class="empty">' + t('emptyHint') + '</div>';
@@ -683,9 +688,13 @@ function openLiveChat() {
 }
 
 function connectWS() {
-  if (ws) ws.close();
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  if (ws) { ws.onclose = null; ws.close(); }
   ws = new WebSocket(WS_URL);
-  ws.onopen = () => appendEvent(t('connected'), 'ev-thinking');
+  ws.onopen = () => {
+    wsReconnectDelay = 1000;
+    appendEvent(t('connected'), 'ev-thinking');
+  };
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
     if (data.type === 'thinking') {
@@ -703,7 +712,17 @@ function connectWS() {
       document.getElementById('chatArea').scrollTop = document.getElementById('chatArea').scrollHeight;
     }
   };
-  ws.onclose = () => appendEvent(t('disconnected'), 'ev-thinking');
+  ws.onclose = () => {
+    appendEvent(t('disconnected'), 'ev-thinking');
+    if (isLiveChat) {
+      wsReconnectTimer = setTimeout(() => {
+        appendEvent(t('reconnecting'), 'ev-thinking');
+        connectWS();
+      }, wsReconnectDelay);
+      wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
+    }
+  };
+  ws.onerror = () => {};
 }
 
 function sendMsg() {

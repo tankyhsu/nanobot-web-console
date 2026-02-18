@@ -34,6 +34,82 @@ from viking_service import VikingService
 logger = logging.getLogger("nanobot-api")
 
 
+# ---- Streaming AgentLoop (structured WS events via _run_agent_loop override) ----
+
+def _make_streaming_class(base_cls):
+    """Create a StreamingAgentLoop that emits structured events for WebSocket."""
+
+    class StreamingAgentLoop(base_cls):
+        """Overrides _run_agent_loop to emit thinking/tool_call/tool_result events."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._event_callback = None
+
+        def set_event_callback(self, cb):
+            self._event_callback = cb
+
+        def clear_event_callback(self):
+            self._event_callback = None
+
+        async def _emit(self, event):
+            if self._event_callback:
+                try:
+                    await self._event_callback(event)
+                except Exception:
+                    pass
+
+        async def _run_agent_loop(self, initial_messages, on_progress=None):
+            """Override to emit structured events when _event_callback is set."""
+            if not self._event_callback:
+                return await super()._run_agent_loop(initial_messages, on_progress=on_progress)
+
+            messages = initial_messages
+            iteration = 0
+            final_content = None
+            tools_used = []
+
+            while iteration < self.max_iterations:
+                iteration += 1
+                await self._emit({"type": "thinking", "iteration": iteration})
+
+                response = await self.provider.chat(
+                    messages=messages,
+                    tools=self.tools.get_definitions(),
+                    model=self.model,
+                    temperature=getattr(self, 'temperature', 0.7),
+                    max_tokens=getattr(self, 'max_tokens', 4096),
+                )
+
+                if response.has_tool_calls:
+                    tool_call_dicts = [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                        for tc in response.tool_calls
+                    ]
+                    messages = self.context.add_assistant_message(
+                        messages, response.content, tool_call_dicts,
+                        reasoning_content=response.reasoning_content,
+                    )
+                    for tool_call in response.tool_calls:
+                        tools_used.append(tool_call.name)
+                        args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                        await self._emit({"type": "tool_call", "name": tool_call.name, "arguments": args_str})
+                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                        await self._emit({"type": "tool_result", "name": tool_call.name, "result": result})
+                        messages = self.context.add_tool_result(
+                            messages, tool_call.id, tool_call.name, result,
+                        )
+                else:
+                    final_content = self._strip_think(response.content) if hasattr(self, '_strip_think') else response.content
+                    break
+
+            return final_content, tools_used
+
+    StreamingAgentLoop.__name__ = f"Streaming{base_cls.__name__}"
+    return StreamingAgentLoop
+
+
 SESSIONS_DIR = Path.home() / ".nanobot" / "sessions"
 CONSOLE_HTML = Path(__file__).parent / "console.html"
 
@@ -203,15 +279,20 @@ async def lifespan(app: FastAPI):
     session_manager = SessionManager(config.workspace_path)
     cron_store_path = get_data_dir() / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
-    agent = AgentLoop(
+    agent_kwargs = dict(
         bus=bus, provider=provider, workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        temperature=config.agents.defaults.temperature,
+        max_tokens=config.agents.defaults.max_tokens,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec, cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
+        mcp_servers=getattr(config.tools, 'mcp_servers', None),
     )
+    StreamingBase = _make_streaming_class(AgentLoop)
+    agent = StreamingBase(**agent_kwargs)
     # Initialize Feishu client and subscribe to outbound messages
     _init_feishu_client(config)
     if _feishu_client:
@@ -430,9 +511,9 @@ async def websocket_chat(ws: WebSocket):
                     pass
 
             try:
+                agent.set_event_callback(on_event)
                 response = await agent.process_direct(
                     content=content, session_key=session, channel="ws", chat_id=session,
-                    event_callback=on_event,
                 )
                 clean = _clean_for_tts(response)
                 emotion = _detect_emotion(clean)
@@ -447,6 +528,8 @@ async def websocket_chat(ws: WebSocket):
                 asyncio.create_task(_store_memory(session, message, clean))
             except Exception as e:
                 await ws.send_json({"type": "error", "message": str(e)})
+            finally:
+                agent.clear_event_callback()
     except WebSocketDisconnect:
         pass
 
