@@ -332,6 +332,12 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 
 ## Changelog
 
+### v0.2.0
+
+- **Compatible with nanobot 0.1.4+** — `StreamingAgentLoop` overrides `_run_agent_loop` for real-time WebSocket streaming of thinking, tool_call, and tool_result events. Supports new AgentLoop params: `temperature`, `max_tokens`, `mcp_servers`.
+- **WebSocket auto-reconnect** — Exponential backoff reconnection (1s→30s) when the WebSocket connection drops during live chat.
+- **Viking is now fully optional** — `viking_service.py` import is wrapped in try/except. The server starts cleanly without it.
+
 ### v0.0.2
 
 - **i18n support** — Chinese/English toggle with auto-detection of browser language. All UI text is translatable. Language preference persists in localStorage.

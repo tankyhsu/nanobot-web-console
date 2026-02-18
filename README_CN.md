@@ -316,6 +316,12 @@ screenshots/        # 示例截图
 
 ## 更新日志
 
+### v0.2.0
+
+- **适配 nanobot 0.1.4+** — `StreamingAgentLoop` 通过覆写 `_run_agent_loop` 实现 WebSocket 实时推送 thinking、tool_call、tool_result 事件。支持新参数：`temperature`、`max_tokens`、`mcp_servers`。
+- **WebSocket 断线自动重连** — 实时对话中连接断开后指数退避重连（1s→30s）。
+- **Viking 完全可选** — `viking_service.py` 导入改为 try/except，不部署 Viking 也能正常启动。
+
 ### v0.0.2
 
 - **国际化支持** — 中英文一键切换，自动检测浏览器语言。所有 UI 文本均可翻译，语言偏好通过 localStorage 持久化。

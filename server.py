@@ -27,9 +27,22 @@ from nanobot.agent.loop import AgentLoop
 from nanobot.session.manager import SessionManager
 from nanobot.cron.service import CronService
 
-# Add viking_service to path
+# ClawWork economic tracking (optional)
+try:
+    from clawmode_integration import ClawWorkAgentLoop, ClawWorkState
+    from clawmode_integration.config import load_clawwork_config
+    from livebench.agent.economic_tracker import EconomicTracker
+    CLAWWORK_AVAILABLE = True
+except ImportError:
+    CLAWWORK_AVAILABLE = False
+
+# Add viking_service to path (optional)
 sys.path.insert(0, str(Path(__file__).parent))
-from viking_service import VikingService
+try:
+    from viking_service import VikingService
+    VIKING_AVAILABLE = True
+except ImportError:
+    VIKING_AVAILABLE = False
 
 logger = logging.getLogger("nanobot-api")
 
@@ -291,21 +304,74 @@ async def lifespan(app: FastAPI):
         session_manager=session_manager,
         mcp_servers=getattr(config.tools, 'mcp_servers', None),
     )
-    StreamingBase = _make_streaming_class(AgentLoop)
-    agent = StreamingBase(**agent_kwargs)
+    # Try ClawWork economic tracking
+    if CLAWWORK_AVAILABLE:
+        cw_cfg = load_clawwork_config()
+        if cw_cfg.enabled:
+            data_path = str(Path(cw_cfg.data_path).expanduser())
+            tracker = EconomicTracker(
+                signature=cw_cfg.signature,
+                initial_balance=cw_cfg.initial_balance,
+                input_token_price=cw_cfg.token_pricing.input_price,
+                output_token_price=cw_cfg.token_pricing.output_price,
+                data_path=data_path,
+            )
+            # Try importing optional heavy deps (evaluator needs OpenAI, task_manager needs pandas)
+            evaluator = None
+            task_mgr = None
+            try:
+                from livebench.work.evaluator import WorkEvaluator
+                p = config.get_provider()
+                if p and p.api_key:
+                    os.environ.setdefault("OPENAI_API_KEY", p.api_key)
+                api_base = config.get_api_base()
+                if api_base:
+                    os.environ.setdefault("OPENAI_API_BASE", api_base)
+                os.environ.setdefault("EVALUATION_MODEL", config.agents.defaults.model.split("/")[-1])
+                evaluator = WorkEvaluator(
+                    data_path=data_path,
+                    meta_prompts_dir=str(Path("/opt/ClawWork/eval/meta_prompts")),
+                )
+            except Exception as e:
+                print(f"[nanobot-api] ClawWork evaluator not available: {e}")
+            try:
+                from livebench.work.task_manager import TaskManager
+                task_mgr = TaskManager(
+                    task_source_type="inline", inline_tasks=[],
+                    task_data_path=data_path,
+                )
+            except Exception as e:
+                print(f"[nanobot-api] ClawWork task manager not available: {e}")
+            cw_state = ClawWorkState(
+                economic_tracker=tracker,
+                task_manager=task_mgr,
+                evaluator=evaluator,
+                signature=cw_cfg.signature,
+                data_path=data_path,
+            )
+            StreamingCW = _make_streaming_class(ClawWorkAgentLoop)
+            agent = StreamingCW(clawwork_state=cw_state, **agent_kwargs)
+            print(f"[nanobot-api] ClawWork enabled (balance=${cw_cfg.initial_balance:.0f}, sig={cw_cfg.signature})")
+        else:
+            StreamingBase = _make_streaming_class(AgentLoop)
+            agent = StreamingBase(**agent_kwargs)
+    else:
+        StreamingBase = _make_streaming_class(AgentLoop)
+        agent = StreamingBase(**agent_kwargs)
     # Initialize Feishu client and subscribe to outbound messages
     _init_feishu_client(config)
     if _feishu_client:
         bus.subscribe_outbound("feishu", _feishu_outbound_handler)
     _dispatcher_task = asyncio.create_task(bus.dispatch_outbound())
     # Initialize OpenViking memory (worker thread handles all operations)
-    try:
-        viking = VikingService()
-        viking.start_worker()
-        logger.info("OpenViking memory layer initialized (worker thread started)")
-    except Exception as e:
-        logger.warning(f"OpenViking init failed (memory layer disabled): {e}")
-        viking = None
+    if VIKING_AVAILABLE:
+        try:
+            viking = VikingService()
+            viking.start_worker()
+            logger.info("OpenViking memory layer initialized (worker thread started)")
+        except Exception as e:
+            logger.warning(f"OpenViking init failed (memory layer disabled): {e}")
+            viking = None
     await cron.start()
     yield
     _dispatcher_task.cancel()
