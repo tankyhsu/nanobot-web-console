@@ -124,6 +124,73 @@ agent: AgentLoop = None
 bus: MessageBus = None
 viking: VikingService = None
 _config = None
+_feishu_client = None
+
+
+# ---- Feishu Outbound Dispatcher ----
+
+def _init_feishu_client(config):
+    """Initialize Feishu lark-oapi client from nanobot config."""
+    global _feishu_client
+    try:
+        import lark_oapi as lark
+        cfg_path = Path.home() / ".nanobot" / "config.json"
+        raw = json.loads(cfg_path.read_text())
+        fc = raw.get("channels", {}).get("feishu", {})
+        app_id = fc.get("appId", "")
+        app_secret = fc.get("appSecret", "")
+        if not (app_id and app_secret):
+            print("[nanobot-api] Feishu credentials not found, outbound messaging disabled")
+            return
+        _feishu_client = lark.Client.builder() \
+            .app_id(app_id).app_secret(app_secret) \
+            .log_level(lark.LogLevel.WARNING).build()
+        print(f"[nanobot-api] Feishu client initialized (app_id={app_id[:8]}...)")
+    except ImportError:
+        print("[nanobot-api] lark-oapi not installed, outbound messaging disabled")
+    except Exception as e:
+        print(f"[nanobot-api] Feishu client init failed: {e}")
+
+
+def _send_feishu_message(receive_id: str, content: str) -> bool:
+    """Send a message via Feishu API. Returns True on success."""
+    if not _feishu_client:
+        return False
+    try:
+        from lark_oapi.api.im.v1 import (
+            CreateMessageRequest, CreateMessageRequestBody,
+        )
+        receive_id_type = "chat_id" if receive_id.startswith("oc_") else "open_id"
+        card = {
+            "config": {"wide_screen_mode": True},
+            "elements": [{"tag": "markdown", "content": content}],
+        }
+        request = CreateMessageRequest.builder() \
+            .receive_id_type(receive_id_type) \
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(receive_id)
+                .msg_type("interactive")
+                .content(json.dumps(card, ensure_ascii=False))
+                .build()
+            ).build()
+        response = _feishu_client.im.v1.message.create(request)
+        if response.success():
+            logger.info(f"Feishu message sent to {receive_id}")
+            return True
+        else:
+            logger.error(f"Feishu send failed: code={response.code}, msg={response.msg}")
+            return False
+    except Exception as e:
+        logger.error(f"Feishu send error: {e}")
+        return False
+
+
+async def _feishu_outbound_handler(msg):
+    """Handle outbound messages destined for Feishu."""
+    print(f"[nanobot-api] Dispatching Feishu message to {msg.chat_id}")
+    result = _send_feishu_message(msg.chat_id, msg.content)
+    print(f"[nanobot-api] Feishu send result: {result}")
 
 
 @asynccontextmanager
@@ -145,6 +212,11 @@ async def lifespan(app: FastAPI):
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
     )
+    # Initialize Feishu client and subscribe to outbound messages
+    _init_feishu_client(config)
+    if _feishu_client:
+        bus.subscribe_outbound("feishu", _feishu_outbound_handler)
+    _dispatcher_task = asyncio.create_task(bus.dispatch_outbound())
     # Initialize OpenViking memory (worker thread handles all operations)
     try:
         viking = VikingService()
@@ -155,6 +227,7 @@ async def lifespan(app: FastAPI):
         viking = None
     await cron.start()
     yield
+    _dispatcher_task.cancel()
     cron.stop()
     if viking:
         viking.close()
