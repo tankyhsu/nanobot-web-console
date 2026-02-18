@@ -123,7 +123,8 @@ def _make_streaming_class(base_cls):
     return StreamingAgentLoop
 
 
-SESSIONS_DIR = Path.home() / ".nanobot" / "sessions"
+SESSIONS_DIR = None  # Set in lifespan from config workspace
+LEGACY_SESSIONS_DIR = Path.home() / ".nanobot" / "sessions"
 CONSOLE_HTML = Path(__file__).parent / "console.html"
 
 DEFAULT_IOT_CONSTRAINT = (
@@ -284,9 +285,10 @@ async def _feishu_outbound_handler(msg):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent, bus, viking, _config
+    global agent, bus, viking, _config, SESSIONS_DIR
     config = load_config()
     _config = config
+    SESSIONS_DIR = config.workspace_path / "sessions"
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
@@ -451,9 +453,16 @@ async def console_page():
 @app.get("/api/sessions")
 async def list_sessions():
     results = []
-    if not SESSIONS_DIR.exists():
-        return results
-    for f in sorted(SESSIONS_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+    seen = set()
+    # Scan both current and legacy session directories
+    dirs = [d for d in [SESSIONS_DIR, LEGACY_SESSIONS_DIR] if d and d.exists()]
+    all_files = []
+    for d in dirs:
+        for f in d.glob("*.jsonl"):
+            if f.stem not in seen:
+                seen.add(f.stem)
+                all_files.append(f)
+    for f in sorted(all_files, key=lambda p: p.stat().st_mtime, reverse=True):
         name = f.stem
         msg_count = 0
         updated = None
@@ -472,10 +481,20 @@ async def list_sessions():
     return results
 
 
+def _find_session_file(name: str) -> Path | None:
+    """Find a session file in current or legacy directory."""
+    for d in [SESSIONS_DIR, LEGACY_SESSIONS_DIR]:
+        if d:
+            p = d / f"{name}.jsonl"
+            if p.exists():
+                return p
+    return None
+
+
 @app.get("/api/sessions/{name}")
 async def get_session(name: str):
-    fpath = SESSIONS_DIR / f"{name}.jsonl"
-    if not fpath.exists():
+    fpath = _find_session_file(name)
+    if not fpath:
         raise HTTPException(404, "Session not found")
     messages = []
     with open(fpath, "r") as f:
@@ -492,8 +511,8 @@ async def get_session(name: str):
 
 @app.delete("/api/sessions/{name}")
 async def delete_session(name: str):
-    fpath = SESSIONS_DIR / f"{name}.jsonl"
-    if not fpath.exists():
+    fpath = _find_session_file(name)
+    if not fpath:
         raise HTTPException(404, "Session not found")
     fpath.unlink()
     return {"status": "ok", "deleted": name}
@@ -576,6 +595,16 @@ async def websocket_chat(ws: WebSocket):
                 except Exception:
                     pass
 
+            async def heartbeat():
+                """Send periodic heartbeat while agent is processing."""
+                try:
+                    while True:
+                        await asyncio.sleep(15)
+                        await ws.send_json({"type": "heartbeat", "timestamp": time.time()})
+                except (Exception, asyncio.CancelledError):
+                    pass
+
+            hb_task = asyncio.create_task(heartbeat())
             try:
                 agent.set_event_callback(on_event)
                 response = await agent.process_direct(
@@ -595,6 +624,7 @@ async def websocket_chat(ws: WebSocket):
             except Exception as e:
                 await ws.send_json({"type": "error", "message": str(e)})
             finally:
+                hb_task.cancel()
                 agent.clear_event_callback()
     except WebSocketDisconnect:
         pass
