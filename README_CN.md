@@ -232,6 +232,8 @@ from nanobot.cron.service import CronService
 - **会话管理** — REST API 列出、查看、删除会话
 - **配置 API** — 查看/更新模型设置，浏览工具和技能
 - **RAG 增强** — 自动用知识库上下文丰富用户消息（Viking 可用时）
+- **主动记忆** — 每次对话自动记录到 `HISTORY.md` 实现跨会话回忆，每 10 次对话由 LLM 自动整合 `MEMORY.md` 长期记忆
+- **WebSocket 心跳** — Agent 处理期间每 15 秒发送心跳，防止客户端超时断连
 - **情绪检测** — 基于关键词的情绪标注，适配 TTS/表情头像
 - **TTS 友好输出** — 自动去除 Markdown 格式，适合语音朗读
 
@@ -266,8 +268,11 @@ from nanobot.cron.service import CronService
 {"type": "thinking", "iteration": 1, "emotion": "thinking"}
 {"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}", "emotion": "gear"}
 {"type": "tool_result", "name": "exec", "result": "...", "emotion": "cool"}
+{"type": "heartbeat", "timestamp": 1739800015.0}
 {"type": "final", "content": "...", "emotion": "happy", "session": "ws:device-id"}
 ```
+
+`heartbeat` 事件在 Agent 处理期间每 15 秒发送一次，防止客户端因工具执行耗时过长而判定超时。
 
 ### 简单对话 (`POST /api/chat`)
 
@@ -316,9 +321,16 @@ screenshots/        # 示例截图
 
 ## 更新日志
 
+### v0.3.0
+
+- **适配 nanobot 0.1.4.post1** — 适配 MessageBus API 变更（`consume_outbound` 替代 `subscribe_outbound`/`dispatch_outbound`）。`StreamingAgentLoop` 覆写 `_run_agent_loop` 实现 WebSocket 实时推送。
+- **主动记忆系统** — 每次对话自动追加到 `HISTORY.md` 实现跨会话回忆。每 10 次对话由 LLM 整合历史到 `MEMORY.md` 长期记忆。
+- **WebSocket 心跳** — Agent 处理期间每 15 秒发送心跳，防止客户端因工具执行耗时过长而超时断连。
+- **Session 路径修复** — 适配 nanobot 0.1.4 新的 session 存储位置（`workspace/sessions/`），同时兼容旧路径 `~/.nanobot/sessions/`。
+
 ### v0.2.0
 
-- **适配 nanobot 0.1.4+** — `StreamingAgentLoop` 通过覆写 `_run_agent_loop` 实现 WebSocket 实时推送 thinking、tool_call、tool_result 事件。支持新参数：`temperature`、`max_tokens`、`mcp_servers`。
+- **适配 nanobot 0.1.4** — `StreamingAgentLoop` 通过覆写 `_run_agent_loop` 实现 WebSocket 实时推送 thinking、tool_call、tool_result 事件。支持新参数：`temperature`、`max_tokens`、`mcp_servers`。
 - **WebSocket 断线自动重连** — 实时对话中连接断开后指数退避重连（1s→30s）。
 - **Viking 完全可选** — `viking_service.py` 导入改为 try/except，不部署 Viking 也能正常启动。
 

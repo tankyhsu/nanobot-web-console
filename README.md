@@ -238,6 +238,8 @@ No additional configuration is needed — `server.py` reuses everything from nan
 - **Session Management** — List, view, delete sessions via REST API
 - **Config API** — View/update model settings, browse tools and skills
 - **RAG Augmentation** — Automatically enriches user messages with knowledge base context (when Viking is available)
+- **Proactive Memory** — Every conversation is logged to `HISTORY.md` for cross-session recall. Every 10 conversations, an LLM consolidates recent history into `MEMORY.md` for long-term retention.
+- **WebSocket Heartbeat** — 15-second keepalive during agent processing prevents client timeouts
 - **Emotion Detection** — Keyword-based emotion tagging for TTS/avatar integration
 - **TTS-friendly Output** — Strips markdown formatting for voice output
 
@@ -272,8 +274,11 @@ Server pushes events:
 {"type": "thinking", "iteration": 1, "emotion": "thinking"}
 {"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}", "emotion": "gear"}
 {"type": "tool_result", "name": "exec", "result": "...", "emotion": "cool"}
+{"type": "heartbeat", "timestamp": 1739800015.0}
 {"type": "final", "content": "...", "emotion": "happy", "session": "ws:device-id"}
 ```
+
+The `heartbeat` event is sent every 15 seconds while the agent is processing, preventing client-side timeout during long tool executions.
 
 ### Simple Chat (`POST /api/chat`)
 
@@ -332,9 +337,16 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 
 ## Changelog
 
+### v0.3.0
+
+- **Compatible with nanobot 0.1.4.post1** — Adapted to MessageBus API changes (`consume_outbound` replaces `subscribe_outbound`/`dispatch_outbound`). `StreamingAgentLoop` overrides `_run_agent_loop` for real-time WebSocket streaming.
+- **Proactive memory system** — Every conversation is appended to `HISTORY.md` for cross-session recall. Every 10 conversations, LLM consolidates history into `MEMORY.md` for long-term retention.
+- **WebSocket heartbeat** — 15-second keepalive during agent processing prevents client timeouts during long tool executions.
+- **Session path fix** — Adapted to nanobot 0.1.4's new session storage location (`workspace/sessions/`) with fallback to legacy `~/.nanobot/sessions/`.
+
 ### v0.2.0
 
-- **Compatible with nanobot 0.1.4+** — `StreamingAgentLoop` overrides `_run_agent_loop` for real-time WebSocket streaming of thinking, tool_call, and tool_result events. Supports new AgentLoop params: `temperature`, `max_tokens`, `mcp_servers`.
+- **Compatible with nanobot 0.1.4** — `StreamingAgentLoop` overrides `_run_agent_loop` for real-time WebSocket streaming of thinking, tool_call, and tool_result events. Supports new AgentLoop params: `temperature`, `max_tokens`, `mcp_servers`.
 - **WebSocket auto-reconnect** — Exponential backoff reconnection (1s→30s) when the WebSocket connection drops during live chat.
 - **Viking is now fully optional** — `viking_service.py` import is wrapped in try/except. The server starts cleanly without it.
 
