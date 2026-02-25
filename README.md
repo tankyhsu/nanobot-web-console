@@ -337,6 +337,10 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 
 ## Changelog
 
+### v0.4.0
+
+- **Compatible with nanobot 0.1.4.post2** — Updated `StreamingAgentLoop._run_agent_loop` to return a 3-tuple `(final_content, tools_used, messages)` matching the new upstream signature.
+
 ### v0.3.0
 
 - **Compatible with nanobot 0.1.4.post1** — Adapted to MessageBus API changes (`consume_outbound` replaces `subscribe_outbound`/`dispatch_outbound`). `StreamingAgentLoop` overrides `_run_agent_loop` for real-time WebSocket streaming.

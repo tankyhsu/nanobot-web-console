@@ -321,6 +321,10 @@ screenshots/        # 示例截图
 
 ## 更新日志
 
+### v0.4.0
+
+- **适配 nanobot 0.1.4.post2** — 更新 `StreamingAgentLoop._run_agent_loop` 返回三元组 `(final_content, tools_used, messages)`，匹配上游新签名。
+
 ### v0.3.0
 
 - **适配 nanobot 0.1.4.post1** — 适配 MessageBus API 变更（`consume_outbound` 替代 `subscribe_outbound`/`dispatch_outbound`）。`StreamingAgentLoop` 覆写 `_run_agent_loop` 实现 WebSocket 实时推送。

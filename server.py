@@ -117,7 +117,7 @@ def _make_streaming_class(base_cls):
                     final_content = self._strip_think(response.content) if hasattr(self, '_strip_think') else response.content
                     break
 
-            return final_content, tools_used
+            return final_content, tools_used, messages
 
     StreamingAgentLoop.__name__ = f"Streaming{base_cls.__name__}"
     return StreamingAgentLoop
