@@ -324,6 +324,7 @@ screenshots/        # 示例截图
 ### v0.4.0
 
 - **适配 nanobot 0.1.4.post2** — 更新 `StreamingAgentLoop._run_agent_loop` 返回三元组 `(final_content, tools_used, messages)`，匹配上游新签名。
+- **移除自定义记忆机制** — 删除 `server.py` 中的 `_store_memory` / `_consolidate_long_term_memory`。nanobot 0.1.4.post2 内置的记忆整合（每 50 条消息自动触发，或 `/new` 手动触发）已完全覆盖此功能。
 
 ### v0.3.0
 

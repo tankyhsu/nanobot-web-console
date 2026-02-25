@@ -14,7 +14,6 @@ import time
 import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -215,8 +214,6 @@ bus: MessageBus = None
 viking = None
 _config = None
 _feishu_client = None
-_chat_counter = 0  # Track conversations for periodic memory consolidation
-
 
 # ---- Feishu Outbound Dispatcher ----
 
@@ -431,70 +428,6 @@ async def _augment_with_memory(message: str) -> str:
     return message
 
 
-async def _store_memory(session: str, user_msg: str, assistant_msg: str):
-    """Append conversation to HISTORY.md and periodically consolidate MEMORY.md."""
-    global _chat_counter
-    try:
-        workspace = _config.workspace_path if _config else Path.home() / ".nanobot" / "workspace"
-        history_file = workspace / "memory" / "HISTORY.md"
-        history_file.parent.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-        # Truncate long messages for history
-        q = user_msg[:200].replace("\n", " ")
-        a = assistant_msg[:300].replace("\n", " ")
-        entry = f"[{ts}] ({session}) Q: {q} | A: {a}\n\n"
-        with open(history_file, "a", encoding="utf-8") as f:
-            f.write(entry)
-    except Exception as e:
-        logger.error(f"History append failed: {e}")
-
-    # Every 10 conversations, consolidate HISTORY.md into MEMORY.md via LLM
-    _chat_counter += 1
-    if _chat_counter % 10 == 0:
-        asyncio.create_task(_consolidate_long_term_memory())
-
-
-async def _consolidate_long_term_memory():
-    """Use LLM to distill recent HISTORY.md entries into MEMORY.md."""
-    try:
-        workspace = _config.workspace_path if _config else Path.home() / ".nanobot" / "workspace"
-        memory_dir = workspace / "memory"
-        history_file = memory_dir / "HISTORY.md"
-        memory_file = memory_dir / "MEMORY.md"
-        if not history_file.exists():
-            return
-        history = history_file.read_text(encoding="utf-8")
-        # Only consolidate last 50 entries to keep prompt small
-        entries = history.strip().split("\n\n")
-        recent = "\n\n".join(entries[-50:])
-        current_memory = memory_file.read_text(encoding="utf-8") if memory_file.exists() else ""
-
-        prompt = (
-            "你是记忆整理助手。根据最近的对话记录更新长期记忆。\n\n"
-            "规则：\n"
-            "- 保留所有已有的重要事实（用户偏好、系统配置、项目信息等）\n"
-            "- 从新对话中提取值得长期记忆的信息（新装的软件、新发现的问题、用户提到的偏好等）\n"
-            "- 删除过时信息（如版本号已更新）\n"
-            "- 保持简洁，用 Markdown 格式\n"
-            "- 直接输出更新后的完整 MEMORY.md 内容，不要其他解释\n\n"
-            f"## 当前 MEMORY.md\n{current_memory or '(空)'}\n\n"
-            f"## 最近对话记录\n{recent}"
-        )
-        from nanobot.providers.litellm_provider import LiteLLMProvider
-        response = await agent.provider.chat(
-            messages=[{"role": "user", "content": prompt}],
-            model=agent.model,
-        )
-        if response.content and response.content.strip():
-            new_memory = response.content.strip()
-            # Strip markdown fences if present
-            if new_memory.startswith("```"):
-                new_memory = new_memory.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-            memory_file.write_text(new_memory, encoding="utf-8")
-            logger.info(f"Long-term memory consolidated ({len(new_memory)} chars)")
-    except Exception as e:
-        logger.error(f"Memory consolidation failed: {e}")
-
 
 def _clean_for_tts(text: str) -> str:
     clean = text.strip()
@@ -604,7 +537,6 @@ async def chat_completions(req: ChatRequest):
         content=augmented, session_key=session_key, channel="api", chat_id="api",
     )
     clean = _clean_for_tts(response)
-    asyncio.create_task(_store_memory(session_key, user_msg, clean))
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion", "created": int(time.time()), "model": "nanobot",
@@ -625,8 +557,6 @@ async def simple_chat(req: SimpleRequest):
     )
     clean = _clean_for_tts(response)
     emotion = _detect_emotion(clean)
-    # Store memory (fire and forget)
-    asyncio.create_task(_store_memory(req.session, req.message, clean))
     return SimpleResponse(response=clean, session=req.session, timestamp=time.time(), emotion=emotion)
 
 
@@ -686,8 +616,6 @@ async def websocket_chat(ws: WebSocket):
                     "session": session,
                     "timestamp": time.time(),
                 })
-                # Store memory (fire and forget)
-                asyncio.create_task(_store_memory(session, message, clean))
             except Exception as e:
                 await ws.send_json({"type": "error", "message": str(e)})
             finally:

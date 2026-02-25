@@ -340,6 +340,7 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 ### v0.4.0
 
 - **Compatible with nanobot 0.1.4.post2** — Updated `StreamingAgentLoop._run_agent_loop` to return a 3-tuple `(final_content, tools_used, messages)` matching the new upstream signature.
+- **Removed custom memory system** — Dropped `_store_memory` / `_consolidate_long_term_memory` from `server.py`. nanobot 0.1.4.post2's built-in memory consolidation (every 50 messages, or via `/new`) fully covers this.
 
 ### v0.3.0
 
