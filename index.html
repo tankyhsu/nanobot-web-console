@@ -634,9 +634,34 @@ async function loadChat(name) {
     area.innerHTML = msgs.map(m => {
       if (!m.role || m.role === '_type') return '';
       const time = m.timestamp ? new Date(m.timestamp).toLocaleString(getLangLocale()) : '';
-      const content = m.role === 'assistant' ? renderMd(m.content) : escHtml(m.content);
+      const timeDiv = `<div class="time" style="font-size:11px;color:var(--text-dim);padding:2px 4px 8px">${time}</div>`;
+
+      // Tool result messages
+      if (m.role === 'tool') {
+        return buildToolResultHtml(m.name, m.content) + timeDiv;
+      }
+
+      // Assistant messages: may have tool_calls and/or content
+      if (m.role === 'assistant') {
+        let html = '';
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          for (const tc of m.tool_calls) {
+            const tcName = (tc.function && tc.function.name) || tc.name || 'tool';
+            const tcArgs = (tc.function && tc.function.arguments) || JSON.stringify(tc.arguments || {});
+            html += buildToolCallHtml(tcName, tcArgs);
+          }
+        }
+        if (m.content && m.content.trim()) {
+          html += `<div class="msg assistant"><div class="bubble">${renderMd(m.content)}</div><div class="time">${time}</div></div>`;
+        } else if (html) {
+          html += timeDiv;
+        }
+        return html;
+      }
+
+      // User and other messages
       return `<div class="msg ${m.role}">
-        <div class="bubble">${content}</div>
+        <div class="bubble">${escHtml(m.content || '')}</div>
         <div class="time">${time}</div>
       </div>`;
     }).join('');
@@ -814,7 +839,7 @@ function getResultSummary(result) {
 
 let toolEventCounter = 0;
 
-function appendToolCall(name, argsStr) {
+function buildToolCallHtml(name, argsStr) {
   const id = 'te_' + (++toolEventCounter);
   const icon = getToolIcon(name);
   const argsHtml = formatToolArgs(argsStr);
@@ -828,19 +853,40 @@ function appendToolCall(name, argsStr) {
       argsSummary = first.length > 40 ? first.substring(0, 37) + '...' : first;
     }
   } catch(e) {}
-
   const headerClick = hasBody ? ' onclick="toggleToolBody(\'' + id + '\')"' : '';
   const toggleHtml = hasBody ? '<span class="tool-toggle" id="' + id + '_toggle">\u{25b6}</span>' : '';
   const bodyHtml = hasBody ? '<div class="tool-event-body" id="' + id + '_body"><div class="tool-args-table">' + argsHtml + '</div></div>' : '';
   const summaryHtml = argsSummary ? '<span class="tool-result-summary">' + escHtml(argsSummary) + '</span>' : '';
-
-  const html = '<div class="tool-event tool-call-event">'
+  return '<div class="tool-event tool-call-event">'
     + '<div class="tool-event-header"' + headerClick + '>'
     + '<span class="tool-icon">' + icon + '</span>'
     + '<span class="tool-name">' + escHtml(name || 'unknown') + '</span>'
     + summaryHtml + toggleHtml
     + '</div>' + bodyHtml + '</div>';
+}
 
+function buildToolResultHtml(name, result) {
+  const id = 'te_' + (++toolEventCounter);
+  const resultStr = String(result || '');
+  const isError = resultStr.toLowerCase().includes('error') || resultStr.includes('\u5931\u8d25');
+  const summary = getResultSummary(resultStr);
+  const hasBody = resultStr.length > 0;
+  const errorClass = isError ? ' tool-error' : '';
+  const headerClick = hasBody ? ' onclick="toggleToolBody(\'' + id + '\')"' : '';
+  const toggleHtml = hasBody ? '<span class="tool-toggle" id="' + id + '_toggle">\u{25b6}</span>' : '';
+  const bodyHtml = hasBody ? '<div class="tool-event-body" id="' + id + '_body">' + formatToolResult(resultStr) + '</div>' : '';
+  const statusIcon = isError ? '\u{274c}' : '\u{2705}';
+  return '<div class="tool-event tool-result-event' + errorClass + '">'
+    + '<div class="tool-event-header"' + headerClick + '>'
+    + '<span class="tool-icon">' + statusIcon + '</span>'
+    + '<span class="tool-name">' + escHtml(name || 'result') + '</span>'
+    + '<span class="tool-result-summary">' + escHtml(summary) + '</span>'
+    + toggleHtml
+    + '</div>' + bodyHtml + '</div>';
+}
+
+function appendToolCall(name, argsStr) {
+  const html = buildToolCallHtml(name, argsStr);
   if (isLiveChat) {
     document.getElementById('chatArea').insertAdjacentHTML('beforeend', html);
   }
@@ -848,26 +894,7 @@ function appendToolCall(name, argsStr) {
 }
 
 function appendToolResult(name, result) {
-  const id = 'te_' + (++toolEventCounter);
-  const resultStr = String(result || '');
-  const isError = resultStr.toLowerCase().includes('error') || resultStr.includes('\u5931\u8d25');
-  const summary = getResultSummary(resultStr);
-  const hasBody = resultStr.length > 0;
-  const errorClass = isError ? ' tool-error' : '';
-
-  const headerClick = hasBody ? ' onclick="toggleToolBody(\'' + id + '\')"' : '';
-  const toggleHtml = hasBody ? '<span class="tool-toggle" id="' + id + '_toggle">\u{25b6}</span>' : '';
-  const bodyHtml = hasBody ? '<div class="tool-event-body" id="' + id + '_body">' + formatToolResult(resultStr) + '</div>' : '';
-  const statusIcon = isError ? '\u{274c}' : '\u{2705}';
-
-  const html = '<div class="tool-event tool-result-event' + errorClass + '">'
-    + '<div class="tool-event-header"' + headerClick + '>'
-    + '<span class="tool-icon">' + statusIcon + '</span>'
-    + '<span class="tool-name">' + escHtml(name || 'result') + '</span>'
-    + '<span class="tool-result-summary">' + escHtml(summary) + '</span>'
-    + toggleHtml
-    + '</div>' + bodyHtml + '</div>';
-
+  const html = buildToolResultHtml(name, result);
   if (isLiveChat) {
     document.getElementById('chatArea').insertAdjacentHTML('beforeend', html);
   }
