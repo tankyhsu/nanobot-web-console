@@ -211,6 +211,40 @@ a { color: var(--link); text-decoration: none; }
 .settings-msg { font-size: 12px; margin-top: 6px; }
 .settings-msg.ok { color: #4caf50; }
 .settings-msg.err { color: #f44336; }
+/* Settings tabs */
+.settings-tabs { display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap; }
+.stab { padding:6px 14px; background:var(--bg-hover); border:1px solid var(--border); color:var(--text-dim); border-radius:4px; cursor:pointer; font-size:13px; }
+.stab:hover { color:var(--text); }
+.stab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.stab-content { display:none; }
+.stab-content.active { display:block; }
+/* Cron styles */
+.cron-job { border:1px solid var(--border); border-radius:6px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
+.cron-job.disabled { opacity:0.55; }
+.cron-job-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.cron-job-name { font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cron-badge { font-size:11px; padding:1px 6px; border-radius:3px; background:var(--ev-tool-bg); color:var(--ev-tool-fg); white-space:nowrap; }
+.cron-badge.ok { background:rgba(76,175,80,0.15); color:#4caf50; }
+.cron-badge.error { background:rgba(244,67,54,0.15); color:#f44336; }
+.cron-meta { font-size:11px; color:var(--text-dim); margin-bottom:6px; line-height:1.6; }
+.cron-msg { font-size:12px; font-family:monospace; background:var(--pre-bg); border-radius:4px; padding:4px 8px; margin-bottom:6px; word-break:break-all; }
+.cron-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.cron-btn { padding:3px 10px; border:1px solid var(--border); background:transparent; color:var(--text); border-radius:4px; cursor:pointer; font-size:12px; }
+.cron-btn:hover { background:var(--bg-hover); }
+.cron-btn.danger { border-color:#f44336; color:#f44336; }
+.cron-btn.danger:hover { background:rgba(244,67,54,0.1); }
+.cron-btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.syscron-row { display:flex; align-items:flex-start; gap:8px; padding:8px; border:1px solid var(--border); border-radius:4px; margin-bottom:6px; font-size:12px; font-family:monospace; }
+.syscron-row.disabled { opacity:0.55; }
+.syscron-content { flex:1; word-break:break-all; line-height:1.6; }
+.syscron-actions { display:flex; gap:4px; flex-shrink:0; }
+.cron-add-form { border:1px dashed var(--border); border-radius:6px; padding:12px; margin-top:12px; }
+.cron-add-form h4 { margin:0 0 10px; font-size:13px; color:var(--accent); }
+.cron-form-grid { display:grid; grid-template-columns:100px 1fr; gap:6px 10px; align-items:center; font-size:13px; margin-bottom:8px; }
+.cron-form-grid label { color:var(--text-dim); text-align:right; }
+.cron-form-grid input, .cron-form-grid select, .cron-form-grid textarea { padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:13px; outline:none; }
+.cron-form-grid input:focus, .cron-form-grid select:focus, .cron-form-grid textarea:focus { border-color:var(--accent); }
+.cron-form-grid textarea { resize:vertical; min-height:50px; font-family:inherit; }
 .restart-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(255,160,0,0.15); border:1px solid rgba(255,160,0,0.4); border-radius:6px; margin-bottom:16px; font-size:13px; color:#ffa000; }
 .light .restart-banner { background:rgba(255,160,0,0.1); }
 .restart-btn { padding:5px 14px; background:#ffa000; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
@@ -390,6 +424,32 @@ const I18N = {
     apiKey: 'API Key',
     apiBase: 'API Base',
     saveProvider: 'Save',
+    tabAgent: 'Agent',
+    tabChannels: 'Channels',
+    tabProviders: 'Providers',
+    tabCron: 'Cron',
+    tabPrompts: 'Prompts',
+    tabInfo: 'Info',
+    cronJobs: 'Scheduled Tasks',
+    cronNanobot: 'Nanobot Jobs',
+    cronSystem: 'System Crontab',
+    cronAdd: 'Add Job',
+    cronName: 'Name',
+    cronSchedule: 'Schedule',
+    cronMessage: 'Message',
+    cronDeliver: 'Deliver',
+    cronChannel: 'Channel',
+    cronEvery: 'Every (ms)',
+    cronExpr: 'Cron Expr',
+    cronAt: 'Run At (ms)',
+    cronNextRun: 'Next',
+    cronLastRun: 'Last',
+    cronNoJobs: 'No scheduled jobs',
+    cronTrigger: 'Run Now',
+    cronToggle: 'Toggle',
+    cronDelete: 'Delete',
+    cronDeleteConfirm: 'Delete this job?',
+    cronTriggered: 'Triggered',
     saved: 'Saved: ',
     error: 'Error: ',
     connected: 'Connected',
@@ -460,6 +520,32 @@ const I18N = {
     apiKey: 'API Key',
     apiBase: 'API Base',
     saveProvider: '保存',
+    tabAgent: 'Agent',
+    tabChannels: '消息频道',
+    tabProviders: '服务商',
+    tabCron: '定时任务',
+    tabPrompts: '系统提示',
+    tabInfo: '信息',
+    cronJobs: '定时任务',
+    cronNanobot: 'Nanobot 任务',
+    cronSystem: '系统 Crontab',
+    cronAdd: '新建任务',
+    cronName: '名称',
+    cronSchedule: '调度',
+    cronMessage: '消息',
+    cronDeliver: '推送',
+    cronChannel: '频道',
+    cronEvery: '间隔 (ms)',
+    cronExpr: 'Cron 表达式',
+    cronAt: '执行时间 (ms)',
+    cronNextRun: '下次',
+    cronLastRun: '上次',
+    cronNoJobs: '暂无定时任务',
+    cronTrigger: '立即执行',
+    cronToggle: '启停',
+    cronDelete: '删除',
+    cronDeleteConfirm: '确定删除此任务？',
+    cronTriggered: '已触发',
     saved: '已保存：',
     error: '错误：',
     connected: '已连接',
@@ -955,6 +1041,7 @@ function toggleToolBody(id) {
 // --- Settings Panel ---
 let isSettingsMode = false;
 let settingsData = null;
+let currentSettingsTab = 'agent';
 
 function openSettings() {
   const btn = document.getElementById('settingsBtn');
@@ -994,80 +1081,34 @@ async function loadSettings() {
   }
 }
 
+function switchSettingsTab(tab) {
+  currentSettingsTab = tab;
+  document.querySelectorAll('.stab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.stab').forEach(el => el.classList.remove('active'));
+  const content = document.getElementById('stab-' + tab);
+  const btn = document.querySelector('.stab[data-tab="' + tab + '"]');
+  if (content) content.classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (tab === 'cron') loadCronJobs();
+}
+
 function renderSettings() {
   if (!settingsData) return;
   const d = settingsData;
   const area = document.getElementById('chatArea');
 
-  // Tool params summary
   function paramSummary(params) {
     if (!params || !params.properties) return '';
     const req = params.required || [];
     return Object.keys(params.properties).map(k => req.includes(k) ? k : k + '?').join(', ');
   }
-
-  const toolsHtml = (d.tools || []).map(t =>
-    '<div class="tool-card">' +
-    '<div class="tc-name">' + escHtml(t.name) + '</div>' +
-    '<div class="tc-desc">' + escHtml(t.description) + '</div>' +
-    '<div class="tc-params">params: ' + escHtml(paramSummary(t.parameters)) + '</div>' +
-    '</div>'
-  ).join('');
-
-  const skillsHtml = (d.skills || []).map((s, i) =>
-    '<div class="skill-card" onclick="showSkillDetail(' + i + ')">' +
-    '<div class="sk-name">' + escHtml(s.name) + '</div>' +
-    '<div class="sk-desc">' + escHtml(s.description) + '</div>' +
-    '</div>'
-  ).join('') || '<div style="color:var(--text-dim);font-size:13px">' + t('noSkills') + '</div>';
-
-  const promptNames = Object.keys(d.prompt_files || {});
-  const firstPrompt = promptNames[0] || '';
-  const promptTabsHtml = promptNames.map((n, i) =>
-    '<div class="prompt-tab' + (i === 0 ? ' active' : '') + '" onclick="switchPromptTab(\'' + escHtml(n) + '\', this)">' + escHtml(n) + '</div>'
-  ).join('');
-  const firstContent = d.prompt_files && d.prompt_files[firstPrompt] ? d.prompt_files[firstPrompt] : '';
-
-  // Channels toggles
-  const ch = d.channels || {};
   function toggleHtml(id, checked) {
     return '<label class="toggle-switch"><input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
   }
 
-  // Providers rows (only show providers with api_key set, or all if <6 total)
-  const allProviders = d.providers || [];
-  const activeProviders = allProviders.filter(p => p.api_key);
-  const showProviders = activeProviders.length > 0 ? activeProviders : allProviders.slice(0, 6);
-  const providersHtml = showProviders.map(p =>
-    '<div class="provider-row">' +
-    '<span class="prov-name" title="' + escHtml(p.name) + '">' + escHtml(p.name) + '</span>' +
-    '<input type="password" id="pkey_' + escHtml(p.name) + '" value="' + escHtml(p.api_key) + '" placeholder="API Key">' +
-    '<input type="text" id="pbase_' + escHtml(p.name) + '" value="' + escHtml(p.api_base) + '" placeholder="API Base (optional)">' +
-    '<button class="prov-save" onclick="saveProvider(\'' + escHtml(p.name) + '\')">' + t('saveProvider') + '</button>' +
-    '</div>'
-  ).join('');
-
-  // Add provider selector for providers not currently shown
-  const shownNames = new Set(showProviders.map(p => p.name));
-  const otherProviders = allProviders.filter(p => !shownNames.has(p.name));
-  const addProviderHtml = otherProviders.length > 0
-    ? '<div style="margin-top:8px;display:flex;gap:6px;align-items:center">' +
-      '<select id="addProviderSelect" style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">' +
-      '<option value="">+ Add provider...</option>' +
-      otherProviders.map(p => '<option value="' + escHtml(p.name) + '">' + escHtml(p.name) + '</option>').join('') +
-      '</select></div>'
-    : '';
-
-  area.innerHTML =
-    '<div class="settings-panel">' +
-
-    // Restart banner (hidden by default, shown after saves)
-    '<div class="restart-banner" id="restartBanner" style="display:none">' +
-    '<span style="flex:1">' + t('restartNote') + '</span>' +
-    '<button class="restart-btn" id="restartBtn" onclick="restartService()">' + t('restartService') + '</button>' +
-    '</div>' +
-
-    // Model config
+  // --- Tab: Agent ---
+  const ch = d.channels || {};
+  const agentTab =
     '<div class="settings-section">' +
     '<h3>' + t('modelConfig') + '</h3>' +
     '<div class="settings-grid">' +
@@ -1080,48 +1121,96 @@ function renderSettings() {
     '</div>' +
     '<button class="settings-save" onclick="saveModelConfig()">' + t('saveConfig') + '</button>' +
     '<div class="settings-msg" id="cfgMsg"></div>' +
-    '</div>' +
+    '</div>';
 
-    // Channels config
+  // --- Tab: Channels ---
+  const channelsTab =
     '<div class="settings-section">' +
-    '<h3>' + t('channelsConfig') + '</h3>' +
     '<div class="toggle-row"><label>' + t('sendProgress') + '</label>' + toggleHtml('chSendProgress', ch.send_progress) + '</div>' +
     '<div class="toggle-row"><label>' + t('sendToolHints') + '</label>' + toggleHtml('chSendToolHints', ch.send_tool_hints) + '</div>' +
     '<button class="settings-save" onclick="saveChannelsConfig()">' + t('saveConfig') + '</button>' +
     '<div class="settings-msg" id="chMsg"></div>' +
-    '</div>' +
+    '</div>';
 
-    // Providers
+  // --- Tab: Providers ---
+  const allProviders = d.providers || [];
+  const activeProviders = allProviders.filter(p => p.api_key);
+  const showProviders = activeProviders.length > 0 ? [...activeProviders] : allProviders.slice(0, 6);
+  const shownNames = new Set(showProviders.map(p => p.name));
+  const otherProviders = allProviders.filter(p => !shownNames.has(p.name));
+  const provRows = showProviders.map(p =>
+    '<div class="provider-row">' +
+    '<span class="prov-name" title="' + escHtml(p.name) + '">' + escHtml(p.name) + '</span>' +
+    '<input type="password" id="pkey_' + escHtml(p.name) + '" value="' + escHtml(p.api_key) + '" placeholder="API Key">' +
+    '<input type="text" id="pbase_' + escHtml(p.name) + '" value="' + escHtml(p.api_base) + '" placeholder="API Base (optional)">' +
+    '<button class="prov-save" onclick="saveProvider(\'' + escHtml(p.name) + '\')">' + t('saveProvider') + '</button>' +
+    '</div>'
+  ).join('');
+  const addProvHtml = otherProviders.length > 0
+    ? '<div style="margin-top:8px"><select id="addProviderSelect" style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px"><option value="">+ Add provider...</option>' +
+      otherProviders.map(p => '<option value="' + escHtml(p.name) + '">' + escHtml(p.name) + '</option>').join('') +
+      '</select></div>' : '';
+  const providersTab =
     '<div class="settings-section">' +
-    '<h3>' + t('providers') + '</h3>' +
     '<div class="provider-header"><span>' + t('provider') + '</span><span>' + t('apiKey') + '</span><span>' + t('apiBase') + '</span><span></span></div>' +
-    providersHtml + addProviderHtml +
+    provRows + addProvHtml +
     '<div class="settings-msg" id="provMsg"></div>' +
-    '</div>' +
+    '</div>';
 
-    // Tools
-    '<div class="settings-section">' +
-    '<h3>' + t('tools') + ' (' + (d.tools || []).length + ')</h3>' +
-    toolsHtml +
-    '</div>' +
+  // --- Tab: Cron ---
+  const cronTab = '<div class="settings-section" id="cronTabContent"><div style="color:var(--text-dim);font-size:13px">' + t('loading') + '</div></div>';
 
-    // Skills
+  // --- Tab: Prompts ---
+  const promptNames = Object.keys(d.prompt_files || {});
+  const firstPrompt = promptNames[0] || '';
+  const promptTabsHtml = promptNames.map((n, i) =>
+    '<div class="prompt-tab' + (i === 0 ? ' active' : '') + '" onclick="switchPromptTab(\'' + escHtml(n) + '\', this)">' + escHtml(n) + '</div>'
+  ).join('');
+  const firstContent = d.prompt_files && d.prompt_files[firstPrompt] ? d.prompt_files[firstPrompt] : '';
+  const promptsTab =
     '<div class="settings-section">' +
-    '<h3>' + t('skills') + ' (' + (d.skills || []).length + ')</h3>' +
-    '<div id="skillsList">' + skillsHtml + '</div>' +
-    '</div>' +
-
-    // System prompts
-    '<div class="settings-section">' +
-    '<h3>' + t('systemPrompts') + '</h3>' +
     '<div class="prompt-tabs" id="promptTabs">' + promptTabsHtml + '</div>' +
     '<textarea class="prompt-editor" id="promptEditor" data-file="' + escHtml(firstPrompt) + '">' + escHtml(firstContent) + '</textarea>' +
     '<button class="settings-save" onclick="savePromptFile()">' + t('savePrompt') + '</button>' +
     '<div class="settings-msg" id="promptMsg"></div>' +
+    '</div>';
+
+  // --- Tab: Info ---
+  const toolsHtml = (d.tools || []).map(tool =>
+    '<div class="tool-card"><div class="tc-name">' + escHtml(tool.name) + '</div>' +
+    '<div class="tc-desc">' + escHtml(tool.description) + '</div>' +
+    '<div class="tc-params">params: ' + escHtml(paramSummary(tool.parameters)) + '</div></div>'
+  ).join('');
+  const skillsHtml = (d.skills || []).map((s, i) =>
+    '<div class="skill-card" onclick="showSkillDetail(' + i + ')">' +
+    '<div class="sk-name">' + escHtml(s.name) + '</div>' +
+    '<div class="sk-desc">' + escHtml(s.description) + '</div></div>'
+  ).join('') || '<div style="color:var(--text-dim);font-size:13px">' + t('noSkills') + '</div>';
+  const infoTab =
+    '<div class="settings-section"><h3>' + t('tools') + ' (' + (d.tools || []).length + ')</h3>' + toolsHtml + '</div>' +
+    '<div class="settings-section"><h3>' + t('skills') + ' (' + (d.skills || []).length + ')</h3><div id="skillsList">' + skillsHtml + '</div></div>' +
+    (d.memory ? '<div class="settings-section"><h3>' + t('memory') + '</h3><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--pre-bg);padding:10px;border-radius:6px">' + escHtml(d.memory) + '</pre></div>' : '');
+
+  // --- Assemble ---
+  const tabs = ['agent','channels','providers','cron','prompts','info'];
+  const tabLabels = [t('tabAgent'),t('tabChannels'),t('tabProviders'),t('tabCron'),t('tabPrompts'),t('tabInfo')];
+  const tabContents = [agentTab, channelsTab, providersTab, cronTab, promptsTab, infoTab];
+
+  const tabBar = '<div class="settings-tabs">' +
+    tabs.map((tab, i) => '<button class="stab' + (tab === currentSettingsTab ? ' active' : '') + '" data-tab="' + tab + '" onclick="switchSettingsTab(\'' + tab + '\')">' + tabLabels[i] + '</button>').join('') +
+    '</div>';
+
+  const tabPanels = tabs.map((tab, i) =>
+    '<div id="stab-' + tab + '" class="stab-content' + (tab === currentSettingsTab ? ' active' : '') + '">' + tabContents[i] + '</div>'
+  ).join('');
+
+  area.innerHTML =
+    '<div class="settings-panel">' +
+    '<div class="restart-banner" id="restartBanner" style="display:none">' +
+    '<span style="flex:1">' + t('restartNote') + '</span>' +
+    '<button class="restart-btn" id="restartBtn" onclick="restartService()">' + t('restartService') + '</button>' +
     '</div>' +
-
-    (d.memory ? '<div class="settings-section"><h3>' + t('memory') + '</h3><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--pre-bg);padding:10px;border-radius:6px">' + escHtml(d.memory) + '</pre></div>' : '') +
-
+    tabBar + tabPanels +
     '</div>';
 
   // Wire up add-provider selector
@@ -1130,15 +1219,16 @@ function renderSettings() {
     addSel.onchange = function() {
       const name = this.value;
       if (!name) return;
-      // Find and add to shown list by re-rendering with that provider added
       const prov = allProviders.find(p => p.name === name);
-      if (prov) {
+      if (prov && !showProviders.find(p => p.name === name)) {
         showProviders.push(prov);
-        settingsData.providers = allProviders; // keep reference
         renderSettings();
       }
     };
   }
+
+  // Load cron tab if it's active
+  if (currentSettingsTab === 'cron') loadCronJobs();
 }
 
 function showSkillDetail(idx) {
@@ -1299,6 +1389,187 @@ async function savePromptFile() {
     msg.textContent = t('error') + e.message;
     msg.className = 'settings-msg err';
   }
+}
+
+// --- Cron Management ---
+
+function fmtMs(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString(getLangLocale());
+}
+function fmtSchedule(s) {
+  if (!s) return '—';
+  if (s.kind === 'cron') return 'cron: ' + (s.expr || '');
+  if (s.kind === 'every') return 'every ' + Math.round(s.every_ms / 60000) + 'm';
+  if (s.kind === 'at') return 'at ' + fmtMs(s.at_ms);
+  return s.kind;
+}
+
+async function loadCronJobs() {
+  const el = document.getElementById('cronTabContent');
+  if (!el) return;
+  try {
+    const [jobsRes, sysRes] = await Promise.all([
+      fetch(API + '/api/cron/jobs'),
+      fetch(API + '/api/cron/system'),
+    ]);
+    const jobs = await jobsRes.json();
+    const sys = await sysRes.json();
+    renderCronTab(el, jobs, sys.entries || []);
+  } catch(e) {
+    el.innerHTML = '<div style="color:#f44336;font-size:13px">' + t('error') + escHtml(e.message) + '</div>';
+  }
+}
+
+function renderCronTab(el, jobs, sysEntries) {
+  // Nanobot jobs
+  const jobsHtml = jobs.length === 0
+    ? '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">' + t('cronNoJobs') + '</div>'
+    : jobs.map(j => {
+        const statusBadge = j.state.last_status
+          ? '<span class="cron-badge ' + (j.state.last_status === 'ok' ? 'ok' : 'error') + '">' + escHtml(j.state.last_status) + '</span>'
+          : '';
+        const enabledBadge = j.enabled ? '' : '<span class="cron-badge" style="opacity:.6">disabled</span>';
+        return '<div class="cron-job' + (j.enabled ? '' : ' disabled') + '" id="cj_' + j.id + '">' +
+          '<div class="cron-job-header">' +
+          '<span class="cron-job-name">' + escHtml(j.name) + '</span>' +
+          statusBadge + enabledBadge +
+          '</div>' +
+          '<div class="cron-meta">' +
+          '📅 ' + escHtml(fmtSchedule(j.schedule)) +
+          (j.state.next_run_at_ms ? ' · ' + t('cronNextRun') + ': ' + fmtMs(j.state.next_run_at_ms) : '') +
+          (j.state.last_run_at_ms ? ' · ' + t('cronLastRun') + ': ' + fmtMs(j.state.last_run_at_ms) : '') +
+          (j.state.last_error ? ' · ⚠️ ' + escHtml(j.state.last_error) : '') +
+          '</div>' +
+          '<div class="cron-msg">' + escHtml(j.payload.message) + '</div>' +
+          '<div class="cron-actions">' +
+          '<button class="cron-btn" onclick="cronToggle(\'' + j.id + '\')">' + (j.enabled ? '⏸ ' : '▶ ') + t('cronToggle') + '</button>' +
+          '<button class="cron-btn primary" onclick="cronRun(\'' + j.id + '\')">' + t('cronTrigger') + '</button>' +
+          '<button class="cron-btn danger" onclick="cronDelete(\'' + j.id + '\')">' + t('cronDelete') + '</button>' +
+          '</div></div>';
+      }).join('');
+
+  // System crontab
+  const sysHtml = sysEntries.length === 0
+    ? '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">' + t('cronNoJobs') + '</div>'
+    : sysEntries.map((e, i) =>
+        '<div class="syscron-row' + (e.enabled ? '' : ' disabled') + '">' +
+        '<span class="syscron-content">' + escHtml(e.content) + '</span>' +
+        '<div class="syscron-actions">' +
+        (!e.comment_only ? '<button class="cron-btn" onclick="sysToggle(' + i + ')" title="' + t('cronToggle') + '">' + (e.enabled ? '⏸' : '▶') + '</button>' : '') +
+        '<button class="cron-btn danger" onclick="sysDelete(' + i + ')" title="' + t('cronDelete') + '">✕</button>' +
+        '</div></div>'
+      ).join('');
+
+  // Add job form
+  const addForm =
+    '<div class="cron-add-form">' +
+    '<h4>+ ' + t('cronAdd') + '</h4>' +
+    '<div class="cron-form-grid">' +
+    '<label>' + t('cronName') + '</label><input id="newCronName" placeholder="Job name">' +
+    '<label>' + t('cronSchedule') + '</label>' +
+    '<div style="display:flex;gap:6px">' +
+    '<select id="newCronKind" onchange="updateCronScheduleInput()" style="padding:5px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px;flex-shrink:0">' +
+    '<option value="cron">cron expr</option>' +
+    '<option value="every">every N min</option>' +
+    '<option value="at">one-time</option>' +
+    '</select>' +
+    '<input id="newCronVal" placeholder="0 8 * * *">' +
+    '</div>' +
+    '<label>' + t('cronMessage') + '</label><textarea id="newCronMsg" placeholder="Message to agent..."></textarea>' +
+    '</div>' +
+    '<button class="cron-btn primary" onclick="cronCreate()">' + t('cronAdd') + '</button>' +
+    '<div class="settings-msg" id="cronMsg"></div>' +
+    '</div>';
+
+  el.innerHTML =
+    '<div class="settings-section"><h3>' + t('cronNanobot') + '</h3>' + jobsHtml + addForm + '</div>' +
+    '<div class="settings-section"><h3>' + t('cronSystem') + '</h3>' + sysHtml + '</div>';
+
+  // Store sys entries for toggle/delete
+  el._sysEntries = sysEntries;
+}
+
+function updateCronScheduleInput() {
+  const kind = document.getElementById('newCronKind').value;
+  const inp = document.getElementById('newCronVal');
+  if (kind === 'cron') { inp.placeholder = '0 8 * * *'; }
+  else if (kind === 'every') { inp.placeholder = '60 (minutes)'; }
+  else { inp.placeholder = 'YYYY-MM-DD HH:MM'; }
+}
+
+async function cronToggle(id) {
+  try {
+    await fetch(API + '/api/cron/jobs/' + id + '/toggle', { method: 'POST' });
+    loadCronJobs();
+  } catch(e) { alert(t('error') + e.message); }
+}
+
+async function cronRun(id) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = t('cronTriggered') + '...';
+  try {
+    const r = await fetch(API + '/api/cron/jobs/' + id + '/run', { method: 'POST' });
+    const res = await r.json();
+    btn.textContent = res.status === 'triggered' ? '✅' : '❌';
+    setTimeout(() => { btn.disabled = false; btn.textContent = t('cronTrigger'); }, 2000);
+  } catch(e) { btn.disabled = false; btn.textContent = t('cronTrigger'); }
+}
+
+async function cronDelete(id) {
+  if (!confirm(t('cronDeleteConfirm'))) return;
+  try {
+    await fetch(API + '/api/cron/jobs/' + id, { method: 'DELETE' });
+    loadCronJobs();
+  } catch(e) { alert(t('error') + e.message); }
+}
+
+async function cronCreate() {
+  const msg = document.getElementById('cronMsg');
+  const name = document.getElementById('newCronName').value.trim();
+  const kind = document.getElementById('newCronKind').value;
+  const val = document.getElementById('newCronVal').value.trim();
+  const message = document.getElementById('newCronMsg').value.trim();
+  if (!name || !val || !message) { msg.textContent = 'Name, schedule and message are required'; msg.className = 'settings-msg err'; return; }
+  const body = { name, schedule_kind: kind, message };
+  if (kind === 'cron') body.expr = val;
+  else if (kind === 'every') body.every_ms = parseFloat(val) * 60000;
+  else body.at_ms = new Date(val).getTime();
+  try {
+    const r = await fetch(API + '/api/cron/jobs', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.detail || r.statusText); }
+    msg.textContent = t('saved') + name;
+    msg.className = 'settings-msg ok';
+    document.getElementById('newCronName').value = '';
+    document.getElementById('newCronVal').value = '';
+    document.getElementById('newCronMsg').value = '';
+    loadCronJobs();
+  } catch(e) { msg.textContent = t('error') + e.message; msg.className = 'settings-msg err'; }
+}
+
+async function sysToggle(idx) {
+  const el = document.getElementById('cronTabContent');
+  const entries = el._sysEntries || [];
+  if (idx < 0 || idx >= entries.length) return;
+  entries[idx].enabled = !entries[idx].enabled;
+  try {
+    const r = await fetch(API + '/api/cron/system', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ entries })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    loadCronJobs();
+  } catch(e) { alert(t('error') + e.message); }
+}
+
+async function sysDelete(idx) {
+  if (!confirm(t('cronDeleteConfirm'))) return;
+  try {
+    const r = await fetch(API + '/api/cron/system/' + idx, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    loadCronJobs();
+  } catch(e) { alert(t('error') + e.message); }
 }
 
 // --- Viking Knowledge Base ---

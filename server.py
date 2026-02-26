@@ -211,6 +211,7 @@ def _make_provider(config):
 
 agent: AgentLoop = None
 bus: MessageBus = None
+cron: CronService = None
 viking = None
 _config = None
 _feishu_client = None
@@ -283,7 +284,7 @@ async def _feishu_outbound_handler(msg):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent, bus, viking, _config, SESSIONS_DIR
+    global agent, bus, cron, viking, _config, SESSIONS_DIR
     config = load_config()
     _config = config
     SESSIONS_DIR = config.workspace_path / "sessions"
@@ -870,6 +871,187 @@ async def update_prompt_file(req: PromptFileUpdateRequest):
         return {"status": "updated", "file": req.filename, "size": len(req.content)}
     except Exception as e:
         raise HTTPException(500, f"Failed to write {req.filename}: {e}")
+
+
+# ---- Cron API ----
+
+def _job_to_dict(job) -> dict:
+    return {
+        "id": job.id,
+        "name": job.name,
+        "enabled": job.enabled,
+        "schedule": {
+            "kind": job.schedule.kind,
+            "expr": getattr(job.schedule, "expr", None),
+            "every_ms": getattr(job.schedule, "every_ms", None),
+            "at_ms": getattr(job.schedule, "at_ms", None),
+            "tz": getattr(job.schedule, "tz", None),
+        },
+        "payload": {
+            "message": job.payload.message,
+            "deliver": job.payload.deliver,
+            "channel": job.payload.channel,
+            "to": job.payload.to,
+        },
+        "state": {
+            "next_run_at_ms": job.state.next_run_at_ms,
+            "last_run_at_ms": job.state.last_run_at_ms,
+            "last_status": job.state.last_status,
+            "last_error": job.state.last_error,
+        },
+        "delete_after_run": job.delete_after_run,
+        "created_at_ms": job.created_at_ms,
+    }
+
+
+@app.get("/api/cron/jobs")
+async def list_cron_jobs():
+    if not cron:
+        raise HTTPException(503, "Cron service not ready")
+    return [_job_to_dict(j) for j in cron.list_jobs(include_disabled=True)]
+
+
+class CronJobCreateRequest(BaseModel):
+    name: str
+    schedule_kind: str  # "cron" | "every" | "at"
+    expr: str | None = None
+    every_ms: int | None = None
+    at_ms: int | None = None
+    tz: str | None = None
+    message: str
+    deliver: bool = False
+    channel: str | None = None
+    to: str | None = None
+    delete_after_run: bool = False
+
+
+@app.post("/api/cron/jobs")
+async def create_cron_job(req: CronJobCreateRequest):
+    if not cron:
+        raise HTTPException(503, "Cron service not ready")
+    from nanobot.cron.types import CronSchedule
+    schedule = CronSchedule(
+        kind=req.schedule_kind,
+        expr=req.expr,
+        every_ms=req.every_ms,
+        at_ms=req.at_ms,
+        tz=req.tz,
+    )
+    job = cron.add_job(
+        name=req.name, schedule=schedule, message=req.message,
+        deliver=req.deliver, channel=req.channel, to=req.to,
+        delete_after_run=req.delete_after_run,
+    )
+    return _job_to_dict(job)
+
+
+@app.delete("/api/cron/jobs/{job_id}")
+async def delete_cron_job(job_id: str):
+    if not cron:
+        raise HTTPException(503, "Cron service not ready")
+    if not cron.remove_job(job_id):
+        raise HTTPException(404, "Job not found")
+    return {"status": "deleted"}
+
+
+@app.post("/api/cron/jobs/{job_id}/toggle")
+async def toggle_cron_job(job_id: str):
+    if not cron:
+        raise HTTPException(503, "Cron service not ready")
+    jobs = cron.list_jobs(include_disabled=True)
+    job = next((j for j in jobs if j.id == job_id), None)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    updated = cron.enable_job(job_id, enabled=not job.enabled)
+    return _job_to_dict(updated)
+
+
+@app.post("/api/cron/jobs/{job_id}/run")
+async def run_cron_job(job_id: str):
+    if not cron:
+        raise HTTPException(503, "Cron service not ready")
+    ok = await cron.run_job(job_id, force=True)
+    return {"status": "triggered" if ok else "failed"}
+
+
+@app.get("/api/cron/system")
+async def get_system_crontab():
+    import subprocess
+    try:
+        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        raw_lines = r.stdout.splitlines() if r.stdout.strip() else []
+        entries = []
+        for i, line in enumerate(raw_lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            is_comment_only = stripped.startswith('#') and not _is_commented_cron(stripped)
+            entries.append({
+                "index": i,
+                "content": line,
+                "enabled": not stripped.startswith('#'),
+                "comment_only": is_comment_only,
+            })
+        return {"entries": entries}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+def _is_commented_cron(line: str) -> bool:
+    """Check if a commented line looks like a disabled cron entry."""
+    import re
+    stripped = line.lstrip('#').strip()
+    return bool(re.match(r'^(\*|[0-9])', stripped))
+
+
+class SystemCronUpdateRequest(BaseModel):
+    entries: list[dict]  # list of {content, enabled}
+
+
+@app.post("/api/cron/system")
+async def update_system_crontab(req: SystemCronUpdateRequest):
+    import subprocess
+    try:
+        lines = []
+        for e in req.entries:
+            content = e.get("content", "").rstrip()
+            enabled = e.get("enabled", True)
+            stripped = content.lstrip('#').strip()
+            if not enabled and not content.startswith('#'):
+                content = '# ' + content
+            elif enabled and content.startswith('#') and _is_commented_cron(content):
+                content = content.lstrip('#').strip()
+            lines.append(content)
+        text = '\n'.join(lines) + '\n'
+        proc = subprocess.run(["crontab", "-"], input=text, text=True, capture_output=True)
+        if proc.returncode != 0:
+            raise HTTPException(400, proc.stderr or "crontab error")
+        return {"status": "updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/cron/system/{index}")
+async def delete_system_cron(index: int):
+    import subprocess
+    try:
+        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        lines = r.stdout.splitlines() if r.stdout.strip() else []
+        non_empty = [(i, l) for i, l in enumerate(lines) if l.strip()]
+        # index refers to position in non_empty list
+        if index < 0 or index >= len(non_empty):
+            raise HTTPException(404, "Entry not found")
+        orig_idx = non_empty[index][0]
+        lines.pop(orig_idx)
+        text = '\n'.join(lines) + '\n'
+        subprocess.run(["crontab", "-"], input=text, text=True)
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @app.get("/health")
