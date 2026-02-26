@@ -215,6 +215,46 @@ cron: CronService = None
 viking = None
 _config = None
 _feishu_client = None
+_gateway_restart_task: asyncio.Task | None = None
+
+
+def _reload_cron_store():
+    """Force CronService to re-read jobs.json on next access.
+
+    Both nanobot.service (gateway) and nanobot-api share the same jobs.json but
+    maintain separate in-memory CronStore caches. Clearing the cache here ensures
+    that reads via the API always reflect the latest on-disk state — including any
+    execution-state updates (nextRunAtMs, lastRunAtMs) written by the gateway.
+    """
+    if cron:
+        cron._store = None
+
+
+async def _do_restart_nanobot_gateway():
+    """Restart nanobot.service so it reloads jobs.json after API mutations.
+
+    Debounced: cancelled and rescheduled if another mutation arrives within 3s,
+    so rapid back-to-back changes only cause a single restart.
+    Fails silently when not running under systemd (e.g. plain `python server.py`).
+    """
+    await asyncio.sleep(3)
+    import subprocess
+    try:
+        subprocess.run(
+            ["systemctl", "restart", "nanobot"],
+            capture_output=True, timeout=10,
+        )
+        logger.info("nanobot-api: restarted nanobot.service to sync cron jobs")
+    except Exception:
+        pass  # Not managed by systemd — no-op
+
+
+def _schedule_gateway_restart():
+    """Schedule a debounced restart of nanobot.service after a cron mutation."""
+    global _gateway_restart_task
+    if _gateway_restart_task and not _gateway_restart_task.done():
+        _gateway_restart_task.cancel()
+    _gateway_restart_task = asyncio.create_task(_do_restart_nanobot_gateway())
 
 # ---- Feishu Outbound Dispatcher ----
 
@@ -927,6 +967,7 @@ def _job_to_dict(job) -> dict:
 async def list_cron_jobs():
     if not cron:
         raise HTTPException(503, "Cron service not ready")
+    _reload_cron_store()  # Always read fresh from disk
     return [_job_to_dict(j) for j in cron.list_jobs(include_disabled=True)]
 
 
@@ -956,11 +997,13 @@ async def create_cron_job(req: CronJobCreateRequest):
         at_ms=req.at_ms,
         tz=req.tz,
     )
+    _reload_cron_store()  # Load fresh before writing to avoid clobbering gateway state
     job = cron.add_job(
         name=req.name, schedule=schedule, message=req.message,
         deliver=req.deliver, channel=req.channel, to=req.to,
         delete_after_run=req.delete_after_run,
     )
+    _schedule_gateway_restart()  # Sync: restart nanobot.service so it reloads jobs.json
     return _job_to_dict(job)
 
 
@@ -968,8 +1011,10 @@ async def create_cron_job(req: CronJobCreateRequest):
 async def delete_cron_job(job_id: str):
     if not cron:
         raise HTTPException(503, "Cron service not ready")
+    _reload_cron_store()
     if not cron.remove_job(job_id):
         raise HTTPException(404, "Job not found")
+    _schedule_gateway_restart()
     return {"status": "deleted"}
 
 
@@ -977,11 +1022,13 @@ async def delete_cron_job(job_id: str):
 async def toggle_cron_job(job_id: str):
     if not cron:
         raise HTTPException(503, "Cron service not ready")
+    _reload_cron_store()
     jobs = cron.list_jobs(include_disabled=True)
     job = next((j for j in jobs if j.id == job_id), None)
     if not job:
         raise HTTPException(404, "Job not found")
     updated = cron.enable_job(job_id, enabled=not job.enabled)
+    _schedule_gateway_restart()
     return _job_to_dict(updated)
 
 
