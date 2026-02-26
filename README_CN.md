@@ -326,6 +326,7 @@ screenshots/        # 示例截图
 - **适配 nanobot 0.1.4.post2** — 更新 `StreamingAgentLoop._run_agent_loop` 返回三元组 `(final_content, tools_used, messages)`，匹配上游新签名。
 - **移除自定义记忆机制** — 删除 `server.py` 中的 `_store_memory` / `_consolidate_long_term_memory`。nanobot 0.1.4.post2 内置的记忆整合（每 50 条消息自动触发，或 `/new` 手动触发）已完全覆盖此功能。
 - **会话历史工具消息渲染修复** — `role: tool` 的工具结果消息现在渲染为可折叠卡片（与实时对话样式一致），不再显示为转义的原始文本。`assistant` 消息中的 `tool_calls` 字段也渲染为工具调用卡片。JSON / 命令行输出等复杂内容以等宽 pre-wrap 格式展示，点击可展开。
+- **设置页面全面升级** — 模型配置新增 `memory_window`。新增消息频道区块（`sendProgress`/`sendToolHints` 开关）。新增模型服务商区块，可直接编辑各 provider 的 API Key 和 Base URL。一键重启服务按钮，重启后自动轮询恢复并刷新页面。
 
 ### v0.3.0
 

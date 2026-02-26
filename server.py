@@ -692,7 +692,7 @@ SKILLS_DIR = WORKSPACE_DIR / "skills"
 
 @app.get("/api/config")
 async def get_config():
-    """Get current agent configuration (model, tools, skills)."""
+    """Get current agent configuration (model, tools, skills, channels, providers)."""
     config_data = {}
     if _config:
         config_data = {
@@ -700,9 +700,26 @@ async def get_config():
             "max_tokens": _config.agents.defaults.max_tokens,
             "temperature": _config.agents.defaults.temperature,
             "max_tool_iterations": _config.agents.defaults.max_tool_iterations,
+            "memory_window": _config.agents.defaults.memory_window,
             "provider": _config.get_provider_name(),
             "workspace": str(_config.workspace_path),
         }
+        # Channels config
+        config_data["channels"] = {
+            "send_progress": _config.channels.send_progress,
+            "send_tool_hints": _config.channels.send_tool_hints,
+        }
+        # Providers — include all with any config set
+        providers = []
+        for field_name in _config.providers.model_fields:
+            p = getattr(_config.providers, field_name, None)
+            if p and hasattr(p, 'api_key'):
+                providers.append({
+                    "name": field_name,
+                    "api_key": p.api_key or "",
+                    "api_base": p.api_base or "",
+                })
+        config_data["providers"] = providers
     # Tools
     tools = []
     if agent and hasattr(agent, 'tools'):
@@ -724,7 +741,6 @@ async def get_config():
                 skill_info = {"name": skill_dir.name, "description": ""}
                 if skill_md.exists():
                     text = skill_md.read_text()
-                    # Extract description from frontmatter
                     fm_match = re.search(r"description:\s*(.+)", text)
                     if fm_match:
                         skill_info["description"] = fm_match.group(1).strip()
@@ -750,16 +766,20 @@ class ConfigUpdateRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     max_tool_iterations: int | None = None
+    memory_window: int | None = None
+    send_progress: bool | None = None
+    send_tool_hints: bool | None = None
 
 
 @app.post("/api/config")
 async def update_config(req: ConfigUpdateRequest):
-    """Update agent model configuration. Requires service restart to take effect."""
+    """Update agent configuration. Requires service restart to take effect."""
     if not CONFIG_PATH.exists():
         raise HTTPException(404, "Config file not found")
     try:
         raw = json.loads(CONFIG_PATH.read_text())
         defaults = raw.setdefault("agents", {}).setdefault("defaults", {})
+        channels = raw.setdefault("channels", {})
         changed = []
         if req.model is not None:
             defaults["model"] = req.model
@@ -773,12 +793,64 @@ async def update_config(req: ConfigUpdateRequest):
         if req.max_tool_iterations is not None:
             defaults["maxToolIterations"] = req.max_tool_iterations
             changed.append(f"maxToolIterations={req.max_tool_iterations}")
+        if req.memory_window is not None:
+            defaults["memoryWindow"] = req.memory_window
+            changed.append(f"memoryWindow={req.memory_window}")
+        if req.send_progress is not None:
+            channels["sendProgress"] = req.send_progress
+            changed.append(f"sendProgress={req.send_progress}")
+        if req.send_tool_hints is not None:
+            channels["sendToolHints"] = req.send_tool_hints
+            changed.append(f"sendToolHints={req.send_tool_hints}")
         if not changed:
             return {"status": "no changes"}
         CONFIG_PATH.write_text(json.dumps(raw, indent=2, ensure_ascii=False))
-        return {"status": "updated", "changed": changed, "note": "Restart service to apply changes"}
+        return {"status": "updated", "changed": changed}
     except Exception as e:
         raise HTTPException(500, f"Failed to update config: {e}")
+
+
+class ProviderUpdateRequest(BaseModel):
+    name: str
+    api_key: str | None = None
+    api_base: str | None = None
+
+
+@app.post("/api/config/provider")
+async def update_provider(req: ProviderUpdateRequest):
+    """Update a provider's API key and/or base URL."""
+    if not CONFIG_PATH.exists():
+        raise HTTPException(404, "Config file not found")
+    try:
+        raw = json.loads(CONFIG_PATH.read_text())
+        p = raw.setdefault("providers", {}).setdefault(req.name, {})
+        changed = []
+        if req.api_key is not None:
+            p["apiKey"] = req.api_key
+            changed.append("apiKey")
+        if req.api_base is not None:
+            p["apiBase"] = req.api_base if req.api_base else None
+            changed.append("apiBase")
+        if not changed:
+            return {"status": "no changes"}
+        CONFIG_PATH.write_text(json.dumps(raw, indent=2, ensure_ascii=False))
+        return {"status": "updated", "provider": req.name, "changed": changed}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update provider: {e}")
+
+
+@app.post("/api/restart")
+async def restart_service():
+    """Restart the nanobot-api systemd service (delayed to allow response to return)."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["bash", "-c", "sleep 1 && systemctl restart nanobot-api"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return {"status": "restarting"}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to restart: {e}")
 
 
 class PromptFileUpdateRequest(BaseModel):

@@ -342,6 +342,7 @@ Register via referral link for bonus credits: **https://cloud.siliconflow.cn/i/U
 - **Compatible with nanobot 0.1.4.post2** — Updated `StreamingAgentLoop._run_agent_loop` to return a 3-tuple `(final_content, tools_used, messages)` matching the new upstream signature.
 - **Removed custom memory system** — Dropped `_store_memory` / `_consolidate_long_term_memory` from `server.py`. nanobot 0.1.4.post2's built-in memory consolidation (every 50 messages, or via `/new`) fully covers this.
 - **Session history: proper tool rendering** — Tool result messages (`role: tool`) now render as collapsible cards (same style as live chat) instead of raw escaped text. Assistant `tool_calls` fields are also rendered as tool call cards. Complex JSON / command output is shown in a monospace pre-wrap body, expandable on click.
+- **Settings page overhaul** — Added `memory_window` to model config. New Channels section with `sendProgress`/`sendToolHints` toggles. New Providers section for editing API keys and base URLs for any provider. One-click service restart button with auto-reconnect polling after restart.
 
 ### v0.3.0
 

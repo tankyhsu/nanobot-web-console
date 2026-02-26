@@ -211,6 +211,26 @@ a { color: var(--link); text-decoration: none; }
 .settings-msg { font-size: 12px; margin-top: 6px; }
 .settings-msg.ok { color: #4caf50; }
 .settings-msg.err { color: #f44336; }
+.restart-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(255,160,0,0.15); border:1px solid rgba(255,160,0,0.4); border-radius:6px; margin-bottom:16px; font-size:13px; color:#ffa000; }
+.light .restart-banner { background:rgba(255,160,0,0.1); }
+.restart-btn { padding:5px 14px; background:#ffa000; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
+.restart-btn:disabled { opacity:0.5; cursor:default; }
+.toggle-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px; }
+.toggle-row label { color:var(--text-dim); }
+.toggle-switch { position:relative; width:40px; height:22px; flex-shrink:0; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; inset:0; background:#555; border-radius:22px; cursor:pointer; transition:.2s; }
+.light .toggle-slider { background:#ccc; }
+.toggle-slider:before { content:""; position:absolute; width:16px; height:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+.toggle-switch input:checked + .toggle-slider { background:var(--accent); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(18px); }
+.provider-row { display:grid; grid-template-columns:90px 1fr 1fr auto; gap:6px; align-items:center; margin-bottom:6px; font-size:12px; }
+.provider-row .prov-name { color:var(--text-dim); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.provider-row input { padding:4px 8px; background:var(--bg-input); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:12px; outline:none; }
+.provider-row input:focus { border-color:var(--accent); }
+.provider-row .prov-save { padding:4px 10px; background:var(--accent); color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; }
+.provider-row .prov-save:disabled { opacity:0.5; cursor:default; }
+.provider-header { display:grid; grid-template-columns:90px 1fr 1fr auto; gap:6px; font-size:11px; color:var(--text-dim); margin-bottom:4px; padding-bottom:4px; border-bottom:1px solid var(--border); }
 .tool-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
 .tool-card .tc-name { font-weight: 600; font-size: 13px; }
 .tool-card .tc-desc { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
@@ -359,6 +379,17 @@ const I18N = {
     loadingConfig: 'Loading configuration...',
     failedLoadConfig: 'Failed to load config: ',
     restartToApply: 'Restart service to apply.',
+    restartService: 'Restart Service',
+    restarting: 'Restarting...',
+    restartNote: '⚠️ Config saved. Restart the service to apply changes.',
+    memoryWindow: 'Memory Window',
+    channelsConfig: 'Channels',
+    sendProgress: 'Send Progress',
+    sendToolHints: 'Send Tool Hints',
+    providers: 'Providers',
+    apiKey: 'API Key',
+    apiBase: 'API Base',
+    saveProvider: 'Save',
     saved: 'Saved: ',
     error: 'Error: ',
     connected: 'Connected',
@@ -418,6 +449,17 @@ const I18N = {
     loadingConfig: '加载配置中...',
     failedLoadConfig: '加载配置失败：',
     restartToApply: '重启服务后生效。',
+    restartService: '重启服务',
+    restarting: '重启中...',
+    restartNote: '⚠️ 配置已保存，重启服务后生效。',
+    memoryWindow: '记忆窗口',
+    channelsConfig: '消息频道',
+    sendProgress: '发送过程消息',
+    sendToolHints: '发送工具提示',
+    providers: '模型服务商',
+    apiKey: 'API Key',
+    apiBase: 'API Base',
+    saveProvider: '保存',
     saved: '已保存：',
     error: '错误：',
     connected: '已连接',
@@ -986,32 +1028,90 @@ function renderSettings() {
   ).join('');
   const firstContent = d.prompt_files && d.prompt_files[firstPrompt] ? d.prompt_files[firstPrompt] : '';
 
+  // Channels toggles
+  const ch = d.channels || {};
+  function toggleHtml(id, checked) {
+    return '<label class="toggle-switch"><input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+  }
+
+  // Providers rows (only show providers with api_key set, or all if <6 total)
+  const allProviders = d.providers || [];
+  const activeProviders = allProviders.filter(p => p.api_key);
+  const showProviders = activeProviders.length > 0 ? activeProviders : allProviders.slice(0, 6);
+  const providersHtml = showProviders.map(p =>
+    '<div class="provider-row">' +
+    '<span class="prov-name" title="' + escHtml(p.name) + '">' + escHtml(p.name) + '</span>' +
+    '<input type="password" id="pkey_' + escHtml(p.name) + '" value="' + escHtml(p.api_key) + '" placeholder="API Key">' +
+    '<input type="text" id="pbase_' + escHtml(p.name) + '" value="' + escHtml(p.api_base) + '" placeholder="API Base (optional)">' +
+    '<button class="prov-save" onclick="saveProvider(\'' + escHtml(p.name) + '\')">' + t('saveProvider') + '</button>' +
+    '</div>'
+  ).join('');
+
+  // Add provider selector for providers not currently shown
+  const shownNames = new Set(showProviders.map(p => p.name));
+  const otherProviders = allProviders.filter(p => !shownNames.has(p.name));
+  const addProviderHtml = otherProviders.length > 0
+    ? '<div style="margin-top:8px;display:flex;gap:6px;align-items:center">' +
+      '<select id="addProviderSelect" style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">' +
+      '<option value="">+ Add provider...</option>' +
+      otherProviders.map(p => '<option value="' + escHtml(p.name) + '">' + escHtml(p.name) + '</option>').join('') +
+      '</select></div>'
+    : '';
+
   area.innerHTML =
     '<div class="settings-panel">' +
 
+    // Restart banner (hidden by default, shown after saves)
+    '<div class="restart-banner" id="restartBanner" style="display:none">' +
+    '<span style="flex:1">' + t('restartNote') + '</span>' +
+    '<button class="restart-btn" id="restartBtn" onclick="restartService()">' + t('restartService') + '</button>' +
+    '</div>' +
+
+    // Model config
     '<div class="settings-section">' +
     '<h3>' + t('modelConfig') + '</h3>' +
     '<div class="settings-grid">' +
     '<label>' + t('model') + '</label><input id="cfgModel" value="' + escHtml(d.model || '') + '">' +
     '<label>' + t('provider') + '</label><input value="' + escHtml(d.provider || '') + '" disabled>' +
-    '<label>' + t('temperature') + '</label><input id="cfgTemp" type="number" step="0.1" min="0" max="2" value="' + (d.temperature || 0.7) + '">' +
+    '<label>' + t('temperature') + '</label><input id="cfgTemp" type="number" step="0.1" min="0" max="2" value="' + (d.temperature ?? 0.7) + '">' +
     '<label>' + t('maxTokens') + '</label><input id="cfgMaxTokens" type="number" step="1024" min="1024" value="' + (d.max_tokens || 8192) + '">' +
-    '<label>' + t('maxIterations') + '</label><input id="cfgMaxIter" type="number" min="1" max="100" value="' + (d.max_tool_iterations || 50) + '">' +
+    '<label>' + t('maxIterations') + '</label><input id="cfgMaxIter" type="number" min="1" max="200" value="' + (d.max_tool_iterations || 50) + '">' +
+    '<label>' + t('memoryWindow') + '</label><input id="cfgMemWindow" type="number" min="10" max="500" value="' + (d.memory_window || 100) + '">' +
     '</div>' +
     '<button class="settings-save" onclick="saveModelConfig()">' + t('saveConfig') + '</button>' +
     '<div class="settings-msg" id="cfgMsg"></div>' +
     '</div>' +
 
+    // Channels config
+    '<div class="settings-section">' +
+    '<h3>' + t('channelsConfig') + '</h3>' +
+    '<div class="toggle-row"><label>' + t('sendProgress') + '</label>' + toggleHtml('chSendProgress', ch.send_progress) + '</div>' +
+    '<div class="toggle-row"><label>' + t('sendToolHints') + '</label>' + toggleHtml('chSendToolHints', ch.send_tool_hints) + '</div>' +
+    '<button class="settings-save" onclick="saveChannelsConfig()">' + t('saveConfig') + '</button>' +
+    '<div class="settings-msg" id="chMsg"></div>' +
+    '</div>' +
+
+    // Providers
+    '<div class="settings-section">' +
+    '<h3>' + t('providers') + '</h3>' +
+    '<div class="provider-header"><span>' + t('provider') + '</span><span>' + t('apiKey') + '</span><span>' + t('apiBase') + '</span><span></span></div>' +
+    providersHtml + addProviderHtml +
+    '<div class="settings-msg" id="provMsg"></div>' +
+    '</div>' +
+
+    // Tools
     '<div class="settings-section">' +
     '<h3>' + t('tools') + ' (' + (d.tools || []).length + ')</h3>' +
     toolsHtml +
     '</div>' +
 
+    // Skills
     '<div class="settings-section">' +
     '<h3>' + t('skills') + ' (' + (d.skills || []).length + ')</h3>' +
     '<div id="skillsList">' + skillsHtml + '</div>' +
     '</div>' +
 
+    // System prompts
     '<div class="settings-section">' +
     '<h3>' + t('systemPrompts') + '</h3>' +
     '<div class="prompt-tabs" id="promptTabs">' + promptTabsHtml + '</div>' +
@@ -1023,6 +1123,22 @@ function renderSettings() {
     (d.memory ? '<div class="settings-section"><h3>' + t('memory') + '</h3><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--pre-bg);padding:10px;border-radius:6px">' + escHtml(d.memory) + '</pre></div>' : '') +
 
     '</div>';
+
+  // Wire up add-provider selector
+  const addSel = document.getElementById('addProviderSelect');
+  if (addSel) {
+    addSel.onchange = function() {
+      const name = this.value;
+      if (!name) return;
+      // Find and add to shown list by re-rendering with that provider added
+      const prov = allProviders.find(p => p.name === name);
+      if (prov) {
+        showProviders.push(prov);
+        settingsData.providers = allProviders; // keep reference
+        renderSettings();
+      }
+    };
+  }
 }
 
 function showSkillDetail(idx) {
@@ -1053,26 +1169,51 @@ function switchPromptTab(filename, el) {
   if (msg) msg.textContent = '';
 }
 
+function showRestartBanner() {
+  const banner = document.getElementById('restartBanner');
+  if (banner) banner.style.display = 'flex';
+}
+
+async function restartService() {
+  const btn = document.getElementById('restartBtn');
+  if (btn) { btn.disabled = true; btn.textContent = t('restarting'); }
+  try {
+    await fetch(API + '/api/restart', { method: 'POST' });
+    // Poll health endpoint until back online
+    const poll = async () => {
+      try {
+        const r = await fetch(API + '/health');
+        if (r.ok) { location.reload(); return; }
+      } catch(e) {}
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 2000);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = t('restartService'); }
+  }
+}
+
 async function saveModelConfig() {
-  const btn = document.querySelector('.settings-save');
   const msg = document.getElementById('cfgMsg');
   const body = {};
   const model = document.getElementById('cfgModel').value.trim();
   const temp = parseFloat(document.getElementById('cfgTemp').value);
   const maxTokens = parseInt(document.getElementById('cfgMaxTokens').value);
   const maxIter = parseInt(document.getElementById('cfgMaxIter').value);
+  const memWin = parseInt(document.getElementById('cfgMemWindow').value);
   if (model && model !== settingsData.model) body.model = model;
   if (!isNaN(temp) && temp !== settingsData.temperature) body.temperature = temp;
   if (!isNaN(maxTokens) && maxTokens !== settingsData.max_tokens) body.max_tokens = maxTokens;
   if (!isNaN(maxIter) && maxIter !== settingsData.max_tool_iterations) body.max_tool_iterations = maxIter;
+  if (!isNaN(memWin) && memWin !== settingsData.memory_window) body.memory_window = memWin;
   if (Object.keys(body).length === 0) { msg.textContent = t('noChanges'); msg.className = 'settings-msg'; return; }
   try {
-    btn.disabled = true;
     const r = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     const result = await r.json();
     if (result.status === 'updated') {
-      msg.textContent = t('saved') + result.changed.join(', ') + '. ' + t('restartToApply');
+      msg.textContent = t('saved') + result.changed.join(', ');
       msg.className = 'settings-msg ok';
+      showRestartBanner();
     } else {
       msg.textContent = result.detail || t('noChanges');
       msg.className = 'settings-msg';
@@ -1080,7 +1221,57 @@ async function saveModelConfig() {
   } catch(e) {
     msg.textContent = t('error') + e.message;
     msg.className = 'settings-msg err';
-  } finally { btn.disabled = false; }
+  }
+}
+
+async function saveChannelsConfig() {
+  const msg = document.getElementById('chMsg');
+  const body = {};
+  const spEl = document.getElementById('chSendProgress');
+  const stEl = document.getElementById('chSendToolHints');
+  const ch = (settingsData && settingsData.channels) || {};
+  if (spEl && spEl.checked !== ch.send_progress) body.send_progress = spEl.checked;
+  if (stEl && stEl.checked !== ch.send_tool_hints) body.send_tool_hints = stEl.checked;
+  if (Object.keys(body).length === 0) { msg.textContent = t('noChanges'); msg.className = 'settings-msg'; return; }
+  try {
+    const r = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const result = await r.json();
+    if (result.status === 'updated') {
+      msg.textContent = t('saved') + result.changed.join(', ');
+      msg.className = 'settings-msg ok';
+      if (settingsData) settingsData.channels = { send_progress: spEl.checked, send_tool_hints: stEl.checked };
+      showRestartBanner();
+    } else {
+      msg.textContent = result.detail || t('noChanges');
+      msg.className = 'settings-msg';
+    }
+  } catch(e) {
+    msg.textContent = t('error') + e.message;
+    msg.className = 'settings-msg err';
+  }
+}
+
+async function saveProvider(name) {
+  const msg = document.getElementById('provMsg');
+  const keyEl = document.getElementById('pkey_' + name);
+  const baseEl = document.getElementById('pbase_' + name);
+  if (!keyEl) return;
+  const body = { name, api_key: keyEl.value, api_base: baseEl ? baseEl.value : '' };
+  try {
+    const r = await fetch(API + '/api/config/provider', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const result = await r.json();
+    if (result.status === 'updated') {
+      msg.textContent = t('saved') + name;
+      msg.className = 'settings-msg ok';
+      showRestartBanner();
+    } else {
+      msg.textContent = result.detail || t('noChanges');
+      msg.className = 'settings-msg';
+    }
+  } catch(e) {
+    msg.textContent = t('error') + e.message;
+    msg.className = 'settings-msg err';
+  }
 }
 
 async function savePromptFile() {
