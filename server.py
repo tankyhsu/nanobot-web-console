@@ -24,7 +24,6 @@ from nanobot.config.loader import load_config, get_data_dir
 from nanobot.bus.queue import MessageBus
 from nanobot.agent.loop import AgentLoop
 from nanobot.session.manager import SessionManager
-from nanobot.cron.service import CronService
 
 # ClawWork economic tracking (optional)
 try:
@@ -211,23 +210,10 @@ def _make_provider(config):
 
 agent: AgentLoop = None
 bus: MessageBus = None
-cron: CronService = None
 viking = None
 _config = None
 _feishu_client = None
 _gateway_restart_task: asyncio.Task | None = None
-
-
-def _reload_cron_store():
-    """Force CronService to re-read jobs.json on next access.
-
-    Both nanobot.service (gateway) and nanobot-api share the same jobs.json but
-    maintain separate in-memory CronStore caches. Clearing the cache here ensures
-    that reads via the API always reflect the latest on-disk state — including any
-    execution-state updates (nextRunAtMs, lastRunAtMs) written by the gateway.
-    """
-    if cron:
-        cron._store = None
 
 
 async def _do_restart_nanobot_gateway():
@@ -324,15 +310,13 @@ async def _feishu_outbound_handler(msg):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent, bus, cron, viking, _config, SESSIONS_DIR
+    global agent, bus, viking, _config, SESSIONS_DIR
     config = load_config()
     _config = config
     SESSIONS_DIR = config.workspace_path / "sessions"
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
-    cron_store_path = get_data_dir() / "cron" / "jobs.json"
-    cron = CronService(cron_store_path)
     agent_kwargs = dict(
         bus=bus, provider=provider, workspace=config.workspace_path,
         model=config.agents.defaults.model,
@@ -340,7 +324,7 @@ async def lifespan(app: FastAPI):
         temperature=config.agents.defaults.temperature,
         max_tokens=config.agents.defaults.max_tokens,
         brave_api_key=config.tools.web.search.api_key or None,
-        exec_config=config.tools.exec, cron_service=cron,
+        exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         mcp_servers=getattr(config.tools, 'mcp_servers', None),
@@ -421,10 +405,8 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"OpenViking init failed (memory layer disabled): {e}")
             viking = None
-    await cron.start()
     yield
     _dispatcher_task.cancel()
-    cron.stop()
     if viking:
         viking.close()
 
@@ -933,42 +915,101 @@ async def update_prompt_file(req: PromptFileUpdateRequest):
 
 
 # ---- Cron API ----
+# Reads and writes jobs.json directly — no in-memory CronService.
+# Execution is handled entirely by nanobot.service (gateway); nanobot-api
+# only provides the management interface.
 
-def _job_to_dict(job) -> dict:
+def _cron_jobs_path() -> Path:
+    return get_data_dir() / "cron" / "jobs.json"
+
+
+def _read_cron_jobs() -> list[dict]:
+    """Read all jobs from jobs.json. Always reads from disk."""
+    p = _cron_jobs_path()
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("jobs", [])
+    except Exception:
+        return []
+
+
+def _write_cron_jobs(jobs: list[dict]) -> None:
+    """Atomically overwrite jobs.json with updated job list."""
+    p = _cron_jobs_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps({"version": 1, "jobs": jobs}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def _compute_next_run_ms(schedule: dict) -> int | None:
+    """Compute nextRunAtMs for a new or re-enabled job.
+
+    Accepts nanobot's camelCase schedule keys (atMs, everyMs, expr, tz, kind).
+    """
+    kind = schedule.get("kind")
+    now_ms = int(time.time() * 1000)
+    if kind == "at":
+        at = schedule.get("atMs")
+        return at if at and at > now_ms else None
+    if kind == "every":
+        every = schedule.get("everyMs")
+        return now_ms + every if every and every > 0 else None
+    if kind == "cron":
+        expr = schedule.get("expr")
+        if not expr:
+            return None
+        try:
+            from croniter import croniter
+            from zoneinfo import ZoneInfo
+            from datetime import datetime
+            tz_name = schedule.get("tz")
+            tz = ZoneInfo(tz_name) if tz_name else datetime.now().astimezone().tzinfo
+            base_dt = datetime.fromtimestamp(now_ms / 1000, tz=tz)
+            return int(croniter(expr, base_dt).get_next(datetime).timestamp() * 1000)
+        except Exception:
+            return None
+    return None
+
+
+def _normalize_job(j: dict) -> dict:
+    """Normalize a raw jobs.json entry (camelCase) to the API response shape (snake_case)."""
+    state = j.get("state") or {}
+    schedule = j.get("schedule") or {}
+    payload = j.get("payload") or {}
     return {
-        "id": job.id,
-        "name": job.name,
-        "enabled": job.enabled,
+        "id": j.get("id"),
+        "name": j.get("name"),
+        "enabled": j.get("enabled", True),
         "schedule": {
-            "kind": job.schedule.kind,
-            "expr": getattr(job.schedule, "expr", None),
-            "every_ms": getattr(job.schedule, "every_ms", None),
-            "at_ms": getattr(job.schedule, "at_ms", None),
-            "tz": getattr(job.schedule, "tz", None),
+            "kind": schedule.get("kind"),
+            "expr": schedule.get("expr"),
+            "every_ms": schedule.get("everyMs"),
+            "at_ms": schedule.get("atMs"),
+            "tz": schedule.get("tz"),
         },
         "payload": {
-            "message": job.payload.message,
-            "deliver": job.payload.deliver,
-            "channel": job.payload.channel,
-            "to": job.payload.to,
+            "message": payload.get("message", ""),
+            "deliver": payload.get("deliver", False),
+            "channel": payload.get("channel"),
+            "to": payload.get("to"),
         },
         "state": {
-            "next_run_at_ms": job.state.next_run_at_ms,
-            "last_run_at_ms": job.state.last_run_at_ms,
-            "last_status": job.state.last_status,
-            "last_error": job.state.last_error,
+            "next_run_at_ms": state.get("nextRunAtMs"),
+            "last_run_at_ms": state.get("lastRunAtMs"),
+            "last_status": state.get("lastStatus"),
+            "last_error": state.get("lastError"),
         },
-        "delete_after_run": job.delete_after_run,
-        "created_at_ms": job.created_at_ms,
+        "delete_after_run": j.get("deleteAfterRun", False),
+        "created_at_ms": j.get("createdAtMs", 0),
     }
 
 
 @app.get("/api/cron/jobs")
 async def list_cron_jobs():
-    if not cron:
-        raise HTTPException(503, "Cron service not ready")
-    _reload_cron_store()  # Always read fresh from disk
-    return [_job_to_dict(j) for j in cron.list_jobs(include_disabled=True)]
+    return [_normalize_job(j) for j in _read_cron_jobs()]
 
 
 class CronJobCreateRequest(BaseModel):
@@ -987,57 +1028,86 @@ class CronJobCreateRequest(BaseModel):
 
 @app.post("/api/cron/jobs")
 async def create_cron_job(req: CronJobCreateRequest):
-    if not cron:
-        raise HTTPException(503, "Cron service not ready")
-    from nanobot.cron.types import CronSchedule
-    schedule = CronSchedule(
-        kind=req.schedule_kind,
-        expr=req.expr,
-        every_ms=req.every_ms,
-        at_ms=req.at_ms,
-        tz=req.tz,
-    )
-    _reload_cron_store()  # Load fresh before writing to avoid clobbering gateway state
-    job = cron.add_job(
-        name=req.name, schedule=schedule, message=req.message,
-        deliver=req.deliver, channel=req.channel, to=req.to,
-        delete_after_run=req.delete_after_run,
-    )
-    _schedule_gateway_restart()  # Sync: restart nanobot.service so it reloads jobs.json
-    return _job_to_dict(job)
+    # Use nanobot's camelCase format so the file stays compatible with nanobot.service
+    schedule = {
+        "kind": req.schedule_kind,
+        "expr": req.expr,
+        "everyMs": req.every_ms,
+        "atMs": req.at_ms,
+        "tz": req.tz,
+    }
+    now_ms = int(time.time() * 1000)
+    job = {
+        "id": str(uuid.uuid4())[:8],
+        "name": req.name,
+        "enabled": True,
+        "schedule": schedule,
+        "payload": {
+            "kind": "agent_turn",
+            "message": req.message,
+            "deliver": req.deliver,
+            "channel": req.channel,
+            "to": req.to,
+        },
+        "state": {
+            "nextRunAtMs": _compute_next_run_ms(schedule),
+            "lastRunAtMs": None,
+            "lastStatus": None,
+            "lastError": None,
+        },
+        "createdAtMs": now_ms,
+        "updatedAtMs": now_ms,
+        "deleteAfterRun": req.delete_after_run,
+    }
+    jobs = _read_cron_jobs()
+    jobs.append(job)
+    _write_cron_jobs(jobs)
+    _schedule_gateway_restart()
+    return _normalize_job(job)
 
 
 @app.delete("/api/cron/jobs/{job_id}")
 async def delete_cron_job(job_id: str):
-    if not cron:
-        raise HTTPException(503, "Cron service not ready")
-    _reload_cron_store()
-    if not cron.remove_job(job_id):
+    jobs = _read_cron_jobs()
+    new_jobs = [j for j in jobs if j["id"] != job_id]
+    if len(new_jobs) == len(jobs):
         raise HTTPException(404, "Job not found")
+    _write_cron_jobs(new_jobs)
     _schedule_gateway_restart()
     return {"status": "deleted"}
 
 
 @app.post("/api/cron/jobs/{job_id}/toggle")
 async def toggle_cron_job(job_id: str):
-    if not cron:
-        raise HTTPException(503, "Cron service not ready")
-    _reload_cron_store()
-    jobs = cron.list_jobs(include_disabled=True)
-    job = next((j for j in jobs if j.id == job_id), None)
+    jobs = _read_cron_jobs()
+    job = next((j for j in jobs if j["id"] == job_id), None)
     if not job:
         raise HTTPException(404, "Job not found")
-    updated = cron.enable_job(job_id, enabled=not job.enabled)
+    job["enabled"] = not job.get("enabled", True)
+    job["updatedAtMs"] = int(time.time() * 1000)
+    if job["enabled"]:
+        job.setdefault("state", {})["nextRunAtMs"] = _compute_next_run_ms(job["schedule"])
+    else:
+        job.setdefault("state", {})["nextRunAtMs"] = None
+    _write_cron_jobs(jobs)
     _schedule_gateway_restart()
-    return _job_to_dict(updated)
+    return _normalize_job(job)
 
 
 @app.post("/api/cron/jobs/{job_id}/run")
 async def run_cron_job(job_id: str):
-    if not cron:
-        raise HTTPException(503, "Cron service not ready")
-    ok = await cron.run_job(job_id, force=True)
-    return {"status": "triggered" if ok else "failed"}
+    """Manually trigger a cron job by dispatching its message through the agent."""
+    jobs = _read_cron_jobs()
+    job = next((j for j in jobs if j["id"] == job_id), None)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if not agent:
+        raise HTTPException(503, "Agent not ready")
+    message = job.get("payload", {}).get("message", "")
+    asyncio.create_task(
+        agent.process_direct(message, session_key="cron:manual", channel="cron", chat_id="manual")
+    )
+    return {"status": "triggered"}
 
 
 @app.get("/api/cron/system")
