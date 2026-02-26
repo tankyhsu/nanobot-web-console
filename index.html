@@ -219,6 +219,8 @@ a { color: var(--link); text-decoration: none; }
 .stab-content { display:none; }
 .stab-content.active { display:block; }
 /* Cron styles */
+.cron-gateway-notice { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px 12px; margin-bottom:12px; font-size:12px; color:var(--text-dim); }
+.cron-gateway-notice span { flex:1; }
 .cron-job { border:1px solid var(--border); border-radius:6px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
 .cron-job.disabled { opacity:0.55; }
 .cron-job-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
@@ -434,6 +436,8 @@ const I18N = {
     cronNanobot: 'Nanobot Jobs',
     cronSystem: 'System Crontab',
     cronAdd: 'Add Job',
+    cronGatewayNotice: 'Nanobot jobs run by the gateway service (nanobot.service). Changes take effect after restarting it.',
+    cronRestartGateway: 'Restart Gateway',
     cronName: 'Name',
     cronSchedule: 'Schedule',
     cronMessage: 'Message',
@@ -530,6 +534,8 @@ const I18N = {
     cronNanobot: 'Nanobot 任务',
     cronSystem: '系统 Crontab',
     cronAdd: '新建任务',
+    cronGatewayNotice: 'Nanobot 任务由 gateway 服务 (nanobot.service) 执行。修改后需重启 gateway 才能生效。',
+    cronRestartGateway: '重启 Gateway',
     cronName: '名称',
     cronSchedule: '调度',
     cronMessage: '消息',
@@ -803,6 +809,11 @@ function openLiveChat() {
   if (isVikingMode) {
     isVikingMode = false;
     document.getElementById('vikingBtn').classList.remove('active');
+  }
+  // Close settings mode if open
+  if (isSettingsMode) {
+    isSettingsMode = false;
+    document.getElementById('settingsBtn').classList.remove('active');
   }
   isLiveChat = !isLiveChat;
   const btn = document.getElementById('liveChatBtn');
@@ -1283,6 +1294,23 @@ async function restartService() {
   }
 }
 
+async function restartNanobotGateway() {
+  // Restart nanobot.service (the gateway that actually executes cron jobs)
+  // so it reloads the updated jobs.json
+  const btns = document.querySelectorAll('[onclick="restartNanobotGateway()"]');
+  btns.forEach(b => { b.disabled = true; b.textContent = t('restarting'); });
+  try {
+    await fetch(API + '/api/restart/nanobot', { method: 'POST' });
+    // Show success after 3 seconds (gateway has no health endpoint to poll)
+    setTimeout(() => {
+      btns.forEach(b => { b.disabled = false; b.textContent = t('cronRestartGateway'); });
+      loadCronJobs();
+    }, 4000);
+  } catch(e) {
+    btns.forEach(b => { b.disabled = false; b.textContent = t('cronRestartGateway'); });
+  }
+}
+
 async function saveModelConfig() {
   const msg = document.getElementById('cfgMsg');
   const body = {};
@@ -1482,8 +1510,14 @@ function renderCronTab(el, jobs, sysEntries) {
     '<div class="settings-msg" id="cronMsg"></div>' +
     '</div>';
 
+  const gatewayNotice =
+    '<div class="cron-gateway-notice">' +
+    '<span>' + t('cronGatewayNotice') + '</span>' +
+    '<button class="cron-btn primary" onclick="restartNanobotGateway()">' + t('cronRestartGateway') + '</button>' +
+    '</div>';
+
   el.innerHTML =
-    '<div class="settings-section"><h3>' + t('cronNanobot') + '</h3>' + jobsHtml + addForm + '</div>' +
+    '<div class="settings-section"><h3>' + t('cronNanobot') + '</h3>' + gatewayNotice + jobsHtml + addForm + '</div>' +
     '<div class="settings-section"><h3>' + t('cronSystem') + '</h3>' + sysHtml + '</div>';
 
   // Store sys entries for toggle/delete

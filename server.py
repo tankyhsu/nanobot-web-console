@@ -854,6 +854,25 @@ async def restart_service():
         raise HTTPException(500, f"Failed to restart: {e}")
 
 
+@app.post("/api/restart/nanobot")
+async def restart_nanobot_gateway():
+    """Restart the nanobot gateway service (the one that actually executes cron jobs).
+
+    Note: nanobot.service and nanobot-api share the same jobs.json but have separate
+    in-memory CronService instances. After modifying cron jobs via the API, restart
+    nanobot.service so it reloads the updated jobs.json.
+    """
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["bash", "-c", "sleep 1 && systemctl restart nanobot"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return {"status": "restarting"}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to restart nanobot: {e}")
+
+
 class PromptFileUpdateRequest(BaseModel):
     filename: str
     content: str
