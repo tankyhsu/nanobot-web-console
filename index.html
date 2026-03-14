@@ -416,7 +416,7 @@ const I18N = {
     restartService: 'Restart Service',
     restarting: 'Restarting...',
     restartNote: '⚠️ Config saved. Restart the service to apply changes.',
-    memoryWindow: 'Memory Window',
+    contextWindowTokens: 'Context Window Tokens',
     channelsConfig: 'Channels',
     sendProgress: 'Send Progress',
     sendToolHints: 'Send Tool Hints',
@@ -513,7 +513,7 @@ const I18N = {
     restartService: '重启服务',
     restarting: '重启中...',
     restartNote: '⚠️ 配置已保存，重启服务后生效。',
-    memoryWindow: '记忆窗口',
+    contextWindowTokens: '上下文窗口',
     channelsConfig: '消息频道',
     sendProgress: '发送过程消息',
     sendToolHints: '发送工具提示',
@@ -1124,7 +1124,7 @@ function renderSettings() {
     '<label>' + t('temperature') + '</label><input id="cfgTemp" type="number" step="0.1" min="0" max="2" value="' + (d.temperature ?? 0.7) + '">' +
     '<label>' + t('maxTokens') + '</label><input id="cfgMaxTokens" type="number" step="1024" min="1024" value="' + (d.max_tokens || 8192) + '">' +
     '<label>' + t('maxIterations') + '</label><input id="cfgMaxIter" type="number" min="1" max="200" value="' + (d.max_tool_iterations || 50) + '">' +
-    '<label>' + t('memoryWindow') + '</label><input id="cfgMemWindow" type="number" min="10" max="500" value="' + (d.memory_window || 100) + '">' +
+    '<label>' + t('contextWindowTokens') + '</label><input id="cfgCtxWindow" type="number" step="1024" min="4096" max="200000" value="' + (d.context_window_tokens || 65536) + '">' +
     '</div>' +
     '<button class="settings-save" onclick="saveModelConfig()">' + t('saveConfig') + '</button>' +
     '<div class="settings-msg" id="cfgMsg"></div>' +
@@ -1298,12 +1298,12 @@ async function saveModelConfig() {
   const temp = parseFloat(document.getElementById('cfgTemp').value);
   const maxTokens = parseInt(document.getElementById('cfgMaxTokens').value);
   const maxIter = parseInt(document.getElementById('cfgMaxIter').value);
-  const memWin = parseInt(document.getElementById('cfgMemWindow').value);
+  const ctxWin = parseInt(document.getElementById('cfgCtxWindow').value);
   if (model && model !== settingsData.model) body.model = model;
   if (!isNaN(temp) && temp !== settingsData.temperature) body.temperature = temp;
   if (!isNaN(maxTokens) && maxTokens !== settingsData.max_tokens) body.max_tokens = maxTokens;
   if (!isNaN(maxIter) && maxIter !== settingsData.max_tool_iterations) body.max_tool_iterations = maxIter;
-  if (!isNaN(memWin) && memWin !== settingsData.memory_window) body.memory_window = memWin;
+  if (!isNaN(ctxWin) && ctxWin !== settingsData.context_window_tokens) body.context_window_tokens = ctxWin;
   if (Object.keys(body).length === 0) { msg.textContent = t('noChanges'); msg.className = 'settings-msg'; return; }
   try {
     const r = await fetch(API + '/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });

@@ -60,7 +60,7 @@ systemctl enable --now nanobot-api
 - **会话历史** — 浏览所有对话，按渠道筛选（飞书 / API / WS / CLI）。工具调用和结果消息以可折叠卡片展示。
 - **实时对话** — WebSocket 流式对话，展示思考状态、工具调用事件和结果。切换页面后内容不丢失。
 - **设置面板** — 6 个 Tab 的配置中心：
-  - **Agent** — 模型、温度、max tokens、最大迭代、记忆窗口
+  - **Agent** — 模型、温度、max tokens、最大迭代、上下文窗口
   - **消息频道** — `sendProgress` / `sendToolHints` 开关
   - **服务商** — 各 provider 的 API Key 和 Base URL
   - **定时任务** — 管理 nanobot 托管任务（新建 / 启停 / 立即执行 / 删除）及系统 crontab，修改后自动同步到 nanobot gateway

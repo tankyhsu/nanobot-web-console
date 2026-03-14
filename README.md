@@ -60,7 +60,7 @@ systemctl enable --now nanobot-api
 - **Session History** — Browse all sessions with channel filtering (Feishu / API / WS / CLI). Tool call and result messages render as collapsible cards.
 - **Live Chat** — Real-time WebSocket chat with streaming thinking indicators, tool call events, and results. Content persists when navigating away.
 - **Settings** — 6-tab configuration panel:
-  - **Agent** — Model, temperature, max tokens, iterations, memory window
+  - **Agent** — Model, temperature, max tokens, iterations, context window tokens
   - **Channels** — `sendProgress` / `sendToolHints` toggles
   - **Providers** — Edit API keys and base URLs per provider
   - **Cron** — Manage nanobot scheduled jobs (add / toggle / trigger / delete) and system crontab. Changes automatically sync to the nanobot gateway.

@@ -20,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from nanobot.config.loader import load_config, get_data_dir
+from nanobot.config.loader import load_config
+from nanobot.config.paths import get_data_dir
 from nanobot.bus.queue import MessageBus
 from nanobot.agent.loop import AgentLoop
 from nanobot.session.manager import SessionManager
@@ -84,23 +85,21 @@ def _make_streaming_class(base_cls):
                 iteration += 1
                 await self._emit({"type": "thinking", "iteration": iteration})
 
-                response = await self.provider.chat(
+                response = await self.provider.chat_with_retry(
                     messages=messages,
                     tools=self.tools.get_definitions(),
                     model=self.model,
-                    temperature=getattr(self, 'temperature', 0.7),
-                    max_tokens=getattr(self, 'max_tokens', 4096),
                 )
 
                 if response.has_tool_calls:
                     tool_call_dicts = [
-                        {"id": tc.id, "type": "function",
-                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                        tc.to_openai_tool_call()
                         for tc in response.tool_calls
                     ]
                     messages = self.context.add_assistant_message(
                         messages, response.content, tool_call_dicts,
                         reasoning_content=response.reasoning_content,
+                        thinking_blocks=response.thinking_blocks,
                     )
                     for tool_call in response.tool_calls:
                         tools_used.append(tool_call.name)
@@ -112,7 +111,16 @@ def _make_streaming_class(base_cls):
                             messages, tool_call.id, tool_call.name, result,
                         )
                 else:
-                    final_content = self._strip_think(response.content) if hasattr(self, '_strip_think') else response.content
+                    clean = self._strip_think(response.content)
+                    if response.finish_reason == "error":
+                        final_content = clean or "Sorry, I encountered an error calling the AI model."
+                        break
+                    messages = self.context.add_assistant_message(
+                        messages, clean,
+                        reasoning_content=response.reasoning_content,
+                        thinking_blocks=response.thinking_blocks,
+                    )
+                    final_content = clean
                     break
 
             return final_content, tools_used, messages
@@ -195,17 +203,25 @@ def _enrich_event(event: dict) -> dict:
 def _make_provider(config):
     """Create LiteLLMProvider from config -- mirrors nanobot CLI logic."""
     from nanobot.providers.litellm_provider import LiteLLMProvider
+    from nanobot.providers.base import GenerationSettings
     p = config.get_provider()
     model = config.agents.defaults.model
     if not (p and p.api_key) and not model.startswith("bedrock/"):
         raise RuntimeError("No API key configured in ~/.nanobot/config.json")
-    return LiteLLMProvider(
+    provider = LiteLLMProvider(
         api_key=p.api_key if p else None,
         api_base=config.get_api_base(),
         default_model=model,
         extra_headers=p.extra_headers if p else None,
         provider_name=config.get_provider_name(),
     )
+    defaults = config.agents.defaults
+    provider.generation = GenerationSettings(
+        temperature=defaults.temperature,
+        max_tokens=defaults.max_tokens,
+        reasoning_effort=getattr(defaults, 'reasoning_effort', None),
+    )
+    return provider
 
 
 agent: AgentLoop = None
@@ -321,13 +337,14 @@ async def lifespan(app: FastAPI):
         bus=bus, provider=provider, workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
-        temperature=config.agents.defaults.temperature,
-        max_tokens=config.agents.defaults.max_tokens,
-        brave_api_key=config.tools.web.search.api_key or None,
+        context_window_tokens=config.agents.defaults.context_window_tokens,
+        web_search_config=config.tools.web.search,
+        web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         mcp_servers=getattr(config.tools, 'mcp_servers', None),
+        channels_config=config.channels,
     )
     # Try ClawWork economic tracking
     if CLAWWORK_AVAILABLE:
@@ -723,7 +740,7 @@ async def get_config():
             "max_tokens": _config.agents.defaults.max_tokens,
             "temperature": _config.agents.defaults.temperature,
             "max_tool_iterations": _config.agents.defaults.max_tool_iterations,
-            "memory_window": _config.agents.defaults.memory_window,
+            "context_window_tokens": _config.agents.defaults.context_window_tokens,
             "provider": _config.get_provider_name(),
             "workspace": str(_config.workspace_path),
         }
@@ -789,7 +806,7 @@ class ConfigUpdateRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     max_tool_iterations: int | None = None
-    memory_window: int | None = None
+    context_window_tokens: int | None = None
     send_progress: bool | None = None
     send_tool_hints: bool | None = None
 
@@ -816,9 +833,9 @@ async def update_config(req: ConfigUpdateRequest):
         if req.max_tool_iterations is not None:
             defaults["maxToolIterations"] = req.max_tool_iterations
             changed.append(f"maxToolIterations={req.max_tool_iterations}")
-        if req.memory_window is not None:
-            defaults["memoryWindow"] = req.memory_window
-            changed.append(f"memoryWindow={req.memory_window}")
+        if req.context_window_tokens is not None:
+            defaults["contextWindowTokens"] = req.context_window_tokens
+            changed.append(f"contextWindowTokens={req.context_window_tokens}")
         if req.send_progress is not None:
             channels["sendProgress"] = req.send_progress
             changed.append(f"sendProgress={req.send_progress}")
