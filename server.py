@@ -131,7 +131,7 @@ def _make_streaming_class(base_cls):
 
 SESSIONS_DIR = None  # Set in lifespan from config workspace
 LEGACY_SESSIONS_DIR = Path.home() / ".nanobot" / "sessions"
-CONSOLE_HTML = Path(__file__).parent / "console.html"
+CONSOLE_HTML = Path(__file__).parent / "index.html"
 
 DEFAULT_IOT_CONSTRAINT = (
     "你的回复将通过TTS语音朗读给用户听，请遵守以下规则：\n"
@@ -338,7 +338,6 @@ async def lifespan(app: FastAPI):
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
         context_window_tokens=config.agents.defaults.context_window_tokens,
-        web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,
@@ -346,6 +345,10 @@ async def lifespan(app: FastAPI):
         mcp_servers=getattr(config.tools, 'mcp_servers', None),
         channels_config=config.channels,
     )
+    # Compat: web_search_config was added in nanobot v0.1.4.post3+; skip on older versions
+    import inspect as _inspect
+    if 'web_search_config' in _inspect.signature(AgentLoop.__init__).parameters:
+        agent_kwargs['web_search_config'] = config.tools.web.search
     # Try ClawWork economic tracking
     if CLAWWORK_AVAILABLE:
         cw_cfg = load_clawwork_config()
