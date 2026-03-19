@@ -16,6 +16,14 @@ nanobot provides a powerful agent core (tools, skills, memory, channels) but no 
 |----------|--------|
 | ![Settings](screenshots/07-settings.png) | ![Mobile](screenshots/08-mobile.png) |
 
+| Knowledge Base | Semantic Search |
+|---------------|----------------|
+| ![Knowledge Base](screenshots/02-knowledge-base.png) | ![Semantic Search](screenshots/03-knowledge-search.png) |
+
+| File Viewer | Onboarding |
+|------------|-----------|
+| ![File Viewer](screenshots/04-knowledge-detail.png) | ![Onboarding](screenshots/05-onboarding.png) |
+
 ## Quick Start
 
 **Prerequisites:** Python 3.11+, nanobot installed and configured (`~/.nanobot/config.json`)
