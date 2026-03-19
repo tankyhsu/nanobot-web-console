@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -35,13 +35,440 @@ try:
 except ImportError:
     CLAWWORK_AVAILABLE = False
 
-# Add viking_service to path (optional)
-sys.path.insert(0, str(Path(__file__).parent))
-try:
-    from viking_service import VikingService
-    VIKING_AVAILABLE = True
-except ImportError:
-    VIKING_AVAILABLE = False
+# OpenViking memory layer (optional) — install with: pip install openviking
+import queue as _queue
+import subprocess as _subprocess
+import threading as _threading
+
+
+def _openviking_importable():
+    try:
+        import openviking  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _openviking_cli_available():
+    try:
+        r = _subprocess.run(["openviking", "--version"], capture_output=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+VIKING_AVAILABLE = _openviking_importable() or _openviking_cli_available()
+
+
+class VikingService:
+    """Inline OpenViking service — auto-detects SDK vs CLI mode.
+
+    SDK mode (pip install openviking + SyncOpenViking available):
+        Uses SyncOpenViking directly in a worker thread.
+    CLI mode (openviking binary on PATH, e.g. running as a separate service):
+        Uses subprocess to call `openviking` CLI commands.
+    """
+
+    def __init__(self, data_dir: str = None):
+        self.data_dir = data_dir or os.path.expanduser("~/.openviking/data")
+        self._ov = None          # SyncOpenViking instance (SDK mode)
+        self._cli_mode = False   # True = use CLI subprocess
+        self._ready = False
+        self._q: _queue.Queue = _queue.Queue()
+        self._worker_thread = None
+
+    # ------------------------------------------------------------------ #
+    #  Worker thread                                                       #
+    # ------------------------------------------------------------------ #
+
+    def start_worker(self):
+        self._worker_thread = _threading.Thread(
+            target=self._worker_loop, daemon=True, name="viking-worker"
+        )
+        self._worker_thread.start()
+
+    def _worker_loop(self):
+        # Try SDK first; fall back to CLI
+        try:
+            from openviking import SyncOpenViking
+            ov_config = os.environ.get(
+                "OPENVIKING_CONFIG_FILE",
+                os.path.expanduser("~/.openviking/ov.conf"),
+            )
+            os.environ.setdefault("OPENVIKING_CONFIG_FILE", ov_config)
+            self._ov = SyncOpenViking(data_dir=self.data_dir)
+            self._ov.initialize()
+            self._ready = True
+            logger.info("OpenViking: SDK mode initialized")
+        except Exception as sdk_err:
+            logger.warning(f"OpenViking SDK init failed ({sdk_err}), trying CLI mode")
+            try:
+                r = _subprocess.run(
+                    ["openviking", "ls", "viking://resources"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if r.returncode == 0:
+                    self._cli_mode = True
+                    self._ready = True
+                    logger.info("OpenViking: CLI mode ready")
+                else:
+                    logger.warning("OpenViking CLI not responding — memory layer disabled")
+            except Exception as cli_err:
+                logger.warning(f"OpenViking CLI unavailable ({cli_err}) — memory layer disabled")
+
+        while True:
+            try:
+                req = self._q.get(timeout=60)
+                if req is None:
+                    break
+                try:
+                    req["result"] = req["fn"](*req["args"])
+                except Exception as e:
+                    req["error"] = e
+                    logger.error(f"Viking worker error: {e}")
+                finally:
+                    req["event"].set()
+            except _queue.Empty:
+                continue
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    async def _run(self, fn, *args, timeout=15.0):
+        req = {"fn": fn, "args": args, "event": _threading.Event(), "result": None, "error": None}
+        self._q.put(req)
+        loop = asyncio.get_running_loop()
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, req["event"].wait), timeout=timeout
+            )
+            if req["error"]:
+                raise req["error"]
+            return req["result"]
+        except (asyncio.TimeoutError, Exception):
+            return None
+
+    # ------------------------------------------------------------------ #
+    #  SDK-mode sync helpers                                              #
+    # ------------------------------------------------------------------ #
+
+    def _sdk_search(self, query, limit=5):
+        r = self._ov.search(query, limit=limit)
+        out = []
+        for m in (r.memories or []):
+            out.append(f"[记忆] {getattr(m,'content',str(m))[:300]}")
+        for res in (r.resources or []):
+            content = getattr(res, 'content', '') or getattr(res, 'abstract', '')
+            out.append(f"[资源:{getattr(res,'uri','')}] {content[:300]}")
+        return "\n\n".join(out) or f"搜索'{query}'无结果"
+
+    def _sdk_find(self, query, limit=10):
+        r = self._ov.find(query, limit=limit)
+        out = []
+        for m in (getattr(r, 'memories', None) or []):
+            out.append(f"[记忆] {getattr(m,'content',str(m))[:300]}")
+        for res in (getattr(r, 'resources', None) or []):
+            content = getattr(res, 'content', '') or getattr(res, 'abstract', '')
+            out.append(f"[资源:{getattr(res,'uri','')}] {content[:300]}")
+        return "\n\n".join(out) or f"深度搜索'{query}'无结果"
+
+    def _sdk_ls(self, uri="viking://resources/"):
+        items = self._ov.ls(uri)
+        if not items:
+            return f"目录{uri}为空"
+        lines = [f"  [{'D' if i.get('isDir') else 'F'}] {i.get('name','')} ({i.get('size',0)}b)" for i in items]
+        return f"目录{uri}:\n" + "\n".join(lines)
+
+    def _sdk_add_resource(self, path):
+        if not os.path.exists(path):
+            return f"文件不存在: {path}"
+        r = self._ov.add_resource(path, wait=True, timeout=120)
+        errors = r.get("errors", [])
+        return f"添加失败: {', '.join(errors)}" if errors else f"已添加: {r.get('root_uri','')}"
+
+    def _sdk_read_resource(self, uri):
+        try:
+            content = self._ov.read(uri)
+            return content if isinstance(content, str) else str(content)
+        except Exception as e:
+            return f"读取失败: {e}"
+
+    def _sdk_delete_resource(self, uri):
+        try:
+            self._ov.rm(uri)
+            return f"已删除: {uri}"
+        except Exception as e:
+            return f"删除失败: {e}"
+
+    def _sdk_list_sessions(self):
+        sessions = self._ov.list_sessions()
+        if not sessions:
+            return "暂无会话记录"
+        lines = [f"  - {s.get('session_id','') if isinstance(s, dict) else s}" for s in sessions[:20]]
+        return "会话列表:\n" + "\n".join(lines)
+
+    def _sdk_retrieve_context(self, query, limit=3):
+        r = self._ov.search(query, limit=limit)
+        parts = []
+        for m in (r.memories or [])[:3]:
+            c = getattr(m, 'content', str(m))
+            if c:
+                parts.append(f"[记忆] {c}")
+        for res in (r.resources or [])[:3]:
+            content = getattr(res, 'content', '') or getattr(res, 'abstract', '')
+            title = getattr(res, 'title', getattr(res, 'uri', ''))
+            if content:
+                parts.append(f"[知识库:{title}] {content[:500]}")
+        return "\n\n".join(parts)
+
+    # ------------------------------------------------------------------ #
+    #  CLI-mode sync helpers                                              #
+    # ------------------------------------------------------------------ #
+
+    def _cli_run(self, *args, timeout=30):
+        try:
+            r = _subprocess.run(
+                ["openviking"] + list(args),
+                capture_output=True, text=True, timeout=timeout,
+            )
+            return r.stdout if r.returncode == 0 else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_ov_fixed_width(output):
+        """Parse openviking fixed-width column output into list of dicts.
+
+        Handles:
+        - Dynamic column widths (openviking adjusts to terminal/content width)
+        - CJK characters (display width 2 per char) in URI columns
+        - Multi-line rows where abstract continues on indented continuation lines
+        """
+        import unicodedata as _ud
+
+        def _disp_width(s):
+            w = 0
+            for c in s:
+                ea = _ud.east_asian_width(c)
+                w += 2 if ea in ("W", "F") else 1
+            return w
+
+        def _char_idx(line, target_disp):
+            """Return char index corresponding to display position target_disp."""
+            pos = 0
+            for i, c in enumerate(line):
+                if pos >= target_disp:
+                    return i
+                ea = _ud.east_asian_width(c)
+                pos += 2 if ea in ("W", "F") else 1
+            return len(line)
+
+        def _extract(line, start_disp, end_disp):
+            s = _char_idx(line, start_disp)
+            if end_disp is None:
+                return line[s:].strip()
+            e = _char_idx(line, end_disp)
+            return line[s:e].strip()
+
+        lines = output.splitlines()
+        if not lines:
+            return []
+
+        # Detect column start positions from header (display widths)
+        header = lines[0]
+        col_positions = []
+        i, disp = 0, 0
+        while i < len(header):
+            c = header[i]
+            if not c.isspace():
+                col_start = disp
+                col_name = ""
+                while i < len(header) and not header[i].isspace():
+                    col_name += header[i]
+                    ea = _ud.east_asian_width(header[i])
+                    disp += 2 if ea in ("W", "F") else 1
+                    i += 1
+                col_positions.append((col_start, col_name))
+            else:
+                ea = _ud.east_asian_width(c)
+                disp += 2 if ea in ("W", "F") else 1
+                i += 1
+
+        if not col_positions:
+            return []
+
+        cols = [
+            (name, col_positions[j][0], col_positions[j + 1][0] if j + 1 < len(col_positions) else None)
+            for j, (_, name) in enumerate(col_positions)
+        ]
+
+        abstract_start = next((s for n, s, e in cols if n == "abstract"), None)
+        abstract_end = next((e for n, s, e in cols if n == "abstract"), None)
+        uri_start = cols[0][1]
+        uri_end = cols[0][2]
+
+        records = []
+        current = None
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            uri_val = _extract(line, uri_start, uri_end)
+            if uri_val:
+                if current:
+                    records.append(current)
+                current = {name: _extract(line, s, e) for name, s, e in cols}
+            else:
+                # Continuation line — append to abstract
+                if current and abstract_start is not None:
+                    cont = _extract(line, abstract_start, abstract_end)
+                    if cont:
+                        current["abstract"] = current.get("abstract", "") + " " + cont
+        if current:
+            records.append(current)
+        return records
+
+    def _cli_search(self, query, limit=5):
+        """Run openviking find and return JSON-compatible dict."""
+        import re as _re
+        out = self._cli_run("find", query, "-n", str(limit))
+        if not out or not out.strip():
+            return {"ok": True, "result": {"resources": [], "memories": [], "skills": [], "total": 0}}
+
+        # Pre-extract scores per data line using regex (avoids fixed-width column misalignment)
+        # Each result row starts with a URI; score appears as a standalone decimal like 0.58511
+        line_scores = {}
+        for line in out.splitlines()[1:]:  # skip header
+            if not line.strip() or line.startswith(" " * 20):
+                continue
+            m = _re.search(r"\b(0\.\d+)", line)
+            if m:
+                # Map by the URI prefix of the line
+                uri_part = line.split()[0] if line.split() else ""
+                line_scores[uri_part] = float(m.group(1))
+
+        rows = self._parse_ov_fixed_width(out)
+        resources = []
+        for row in rows:
+            uri = row.get("uri", "")
+            if not uri:
+                continue
+            abstract = row.get("abstract", "")
+            context_type = row.get("context_type", "resource")
+            score = line_scores.get(uri, 0.0)
+            resources.append({"uri": uri, "content": abstract[:300], "score": score, "context_type": context_type})
+        return {"ok": True, "result": {"resources": resources, "memories": [], "skills": [], "total": len(resources)}}
+
+    def _cli_find(self, query, limit=10):
+        """Same as _cli_search but larger limit (used by deep search)."""
+        return self._cli_search(query, limit=limit)
+
+    def _cli_ls(self, uri="viking://resources"):
+        """Run openviking ls and return JSON-compatible dict."""
+        out = self._cli_run("ls", uri)
+        if not out or not out.strip():
+            return {"ok": True, "result": []}
+        rows = self._parse_ov_fixed_width(out)
+        items = []
+        for row in rows:
+            item_uri = row.get("uri", "")
+            if not item_uri:
+                continue
+            try:
+                size = int(row.get("size", 0) or 0)
+            except ValueError:
+                size = 0
+            is_dir = row.get("isDir", "").lower() == "true"
+            items.append({
+                "uri": item_uri,
+                "isDir": is_dir,
+                "size": size,
+                "abstract": row.get("abstract", "")[:200],
+            })
+        return {"ok": True, "result": items}
+
+    def _cli_add_resource(self, path):
+        out = self._cli_run("add-resource", path, timeout=120)
+        return out or f"添加失败: {path}"
+
+    def _cli_read_resource(self, uri):
+        try:
+            r = _subprocess.run(
+                ["openviking", "read", uri],
+                capture_output=True, timeout=30,
+            )
+            content = r.stdout.decode("utf-8", errors="replace").strip()
+            return content if content else f"（内容为空）"
+        except Exception as e:
+            return f"读取失败: {e}"
+
+    def _cli_delete_resource(self, uri):
+        try:
+            _subprocess.run(
+                ["openviking", "rm", "-r", uri],
+                capture_output=True, check=True, timeout=30,
+            )
+            return f"已删除: {uri}"
+        except _subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode() if e.stderr else ""
+            return f"删除失败: {stderr or uri}"
+        except Exception as e:
+            return f"删除失败: {e}"
+
+    def _cli_list_sessions(self):
+        out = self._cli_run("list-sessions")
+        return out or "暂无会话记录"
+
+    def _cli_retrieve_context(self, query, limit=3):
+        result = self._cli_search(query, limit=limit)
+        if isinstance(result, dict) and result.get("ok"):
+            resources = result.get("result", {}).get("resources", [])
+            parts = [f"[知识库:{r['uri']}] {r['content']}" for r in resources[:3] if r.get("content")]
+            return "\n\n".join(parts)
+        return ""
+
+    # ------------------------------------------------------------------ #
+    #  Dispatch (SDK vs CLI)                                              #
+    # ------------------------------------------------------------------ #
+
+    def _dispatch(self, sdk_fn, cli_fn, *args):
+        return sdk_fn(*args) if not self._cli_mode else cli_fn(*args)
+
+    # ------------------------------------------------------------------ #
+    #  Public async API                                                   #
+    # ------------------------------------------------------------------ #
+
+    async def search(self, query, limit=5):
+        return await self._run(self._dispatch, self._sdk_search, self._cli_search, query, limit) or f"搜索'{query}'超时"
+
+    async def find(self, query, limit=10):
+        return await self._run(self._dispatch, self._sdk_find, self._cli_find, query, limit, timeout=30) or f"深度搜索'{query}'超时"
+
+    async def ls(self, uri="viking://resources/"):
+        return await self._run(self._dispatch, self._sdk_ls, self._cli_ls, uri) or f"列目录{uri}超时"
+
+    async def add_resource(self, path):
+        return await self._run(self._dispatch, self._sdk_add_resource, self._cli_add_resource, path, timeout=120) or "添加超时"
+
+    async def read_resource(self, uri):
+        return await self._run(self._dispatch, self._sdk_read_resource, self._cli_read_resource, uri, timeout=30) or "（读取超时）"
+
+    async def delete_resource(self, uri):
+        return await self._run(self._dispatch, self._sdk_delete_resource, self._cli_delete_resource, uri, timeout=30) or "删除超时"
+
+    async def list_sessions(self):
+        return await self._run(self._dispatch, self._sdk_list_sessions, self._cli_list_sessions) or "获取会话列表超时"
+
+    async def retrieve_context(self, query, limit=3):
+        return await self._run(self._dispatch, self._sdk_retrieve_context, self._cli_retrieve_context, query, limit, timeout=10) or ""
+
+    def close(self):
+        self._q.put(None)
+        if self._ov:
+            try:
+                self._ov.close()
+            except Exception:
+                pass
 
 logger = logging.getLogger("nanobot-api")
 
@@ -450,6 +877,7 @@ class SimpleRequest(BaseModel):
     message: str
     session: str = "api:default"
     constraint: str | None = None
+    use_kb: bool = True  # whether to inject knowledge base context
 
 class SimpleResponse(BaseModel):
     response: str
@@ -592,8 +1020,8 @@ async def chat_completions(req: ChatRequest):
 async def simple_chat(req: SimpleRequest):
     if not agent:
         raise HTTPException(503, "Agent not ready")
-    # Memory augmentation
-    augmented = await _augment_with_memory(req.message)
+    # Memory augmentation (skip if use_kb=False)
+    augmented = await _augment_with_memory(req.message) if req.use_kb else req.message
     content = f"{augmented}\n\n（回复要求：{req.constraint}）" if req.constraint else augmented
     response = await agent.process_direct(
         content=content, session_key=req.session, channel="api", chat_id=req.session,
@@ -625,8 +1053,9 @@ async def websocket_chat(ws: WebSocket):
                 continue
             session = data.get("session", "ws:default")
             constraint = data.get("constraint", None)
-            # Memory augmentation
-            augmented = await _augment_with_memory(message)
+            use_kb = data.get("use_kb", True)
+            # Memory augmentation (skip if use_kb=False)
+            augmented = await _augment_with_memory(message) if use_kb else message
             content = f"{augmented}\n\n（回复要求：{constraint}）" if constraint else augmented
 
             async def on_event(event: dict):
@@ -711,7 +1140,10 @@ async def viking_add(req: VikingAddRequest):
 
 
 @app.get("/api/viking/ls")
-async def viking_ls(uri: str = "viking://resources/"):
+async def viking_ls(uri: str = "viking://resources/", mock_no_viking: int = 0):
+    """List resources. Pass ?mock_no_viking=1 to simulate Viking-not-installed (for onboarding test)."""
+    if mock_no_viking:
+        raise HTTPException(503, "OpenViking not initialized (mock)")
     if not viking or not viking.ready:
         raise HTTPException(503, "OpenViking not initialized")
     result = await viking.ls(uri)
@@ -724,6 +1156,54 @@ async def viking_sessions():
         raise HTTPException(503, "OpenViking not initialized")
     result = await viking.list_sessions()
     return {"result": result}
+
+
+@app.post("/api/viking/upload")
+async def viking_upload(file: UploadFile = File(...)):
+    """Upload a file to Viking knowledge base.
+
+    Saves the uploaded file to a temp directory under Viking's data dir,
+    then calls add_resource to import it.
+    """
+    if not viking or not viking.ready:
+        raise HTTPException(503, "OpenViking not initialized")
+    import tempfile
+    # Use a persistent staging dir so Viking can still read after add_resource
+    staging_dir = Path(os.path.expanduser("~/.nanobot/viking_uploads"))
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename).name if file.filename else "upload"
+    dest = staging_dir / safe_name
+    try:
+        content = await file.read()
+        dest.write_bytes(content)
+        result = await viking.add_resource(str(dest))
+        return {"result": result, "filename": safe_name}
+    except Exception as e:
+        raise HTTPException(500, f"Upload failed: {e}")
+
+
+class VikingDeleteRequest(BaseModel):
+    uri: str
+
+
+@app.post("/api/viking/delete")
+async def viking_delete(req: VikingDeleteRequest):
+    """Delete a resource from Viking knowledge base by URI."""
+    if not viking or not viking.ready:
+        raise HTTPException(503, "OpenViking not initialized")
+    result = await viking.delete_resource(req.uri)
+    return {"result": result}
+
+
+@app.get("/api/viking/get")
+async def viking_get(uri: str, mock_no_viking: int = 0):
+    """Read full content of a Viking resource by URI."""
+    if mock_no_viking:
+        raise HTTPException(503, "OpenViking not available (mock)")
+    if not viking or not viking.ready:
+        raise HTTPException(503, "OpenViking not initialized")
+    result = await viking.read_resource(uri)
+    return {"ok": True, "content": result}
 
 
 # ---- Config / Tools / Skills API ----
@@ -1211,8 +1691,13 @@ async def delete_system_cron(index: int):
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "agent_ready": agent is not None, "viking_ready": viking is not None and viking.ready}
+async def health(mock_no_viking: int = 0):
+    """Health check. Pass ?mock_no_viking=1 to test onboarding UI (Viking OFF state)."""
+    return {
+        "status": "ok",
+        "agent_ready": agent is not None,
+        "viking_ready": (viking is not None and viking.ready) if not mock_no_viking else False,
+    }
 
 
 @app.get("/v1/models")

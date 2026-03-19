@@ -66,7 +66,7 @@ systemctl enable --now nanobot-api
   - **定时任务** — 管理 nanobot 托管任务（新建 / 启停 / 立即执行 / 删除）及系统 crontab，修改后自动同步到 nanobot gateway
   - **系统提示** — 在线编辑 SOUL.md、AGENTS.md、USER.md
   - **信息** — 工具列表、技能列表、长期记忆查看
-- **知识库** *（可选，需 [nanobot-viking](https://github.com/tankyhsu/nanobot-viking)）* — 浏览 `viking://` 虚拟文件系统，语义搜索
+- **知识库** *（可选，`pip install openviking` 即可启用）* — 浏览 `viking://` 虚拟文件系统、查看文件内容、上传/删除文件、语义搜索；未安装时自动显示新手引导
 - 深色 / 浅色主题、移动端适配、URL 路由、输入法兼容
 
 ### API 服务
@@ -77,7 +77,7 @@ systemctl enable --now nanobot-api
 - `GET/DELETE /api/sessions/{name}` — 会话管理
 - `GET/POST /api/config` — 查看和更新 Agent 配置
 - `GET/POST /api/cron/jobs` — nanobot 定时任务管理
-- `/api/viking/*` — 知识库 *（可选）*
+- `/api/viking/*` — 知识库 *（可选，需 `pip install openviking`）*
 
 ## WebSocket 协议
 
@@ -97,12 +97,27 @@ systemctl enable --now nanobot-api
 
 ## 知识库集成（可选）
 
+只需一条命令安装：
+
 ```bash
-# 把 viking_service.py 复制到 server.py 同目录
-cp /path/to/nanobot-viking/viking_service.py .
+pip install openviking
 ```
 
-启动时自动检测并初始化，不可用时服务正常运行。
+重启 `server.py` 后自动检测并初始化，无需复制任何文件。未安装时服务正常运行，并在知识库 Tab 显示安装引导。
+
+### 知识库功能
+
+- **文件列表浏览** — 浏览 `viking://` 虚拟文件系统，支持目录导航
+- **文件内容查看** — 内置 Markdown 渲染器，直接在浏览器查看知识库文件
+- **文件上传** — 拖拽或点击上传，支持多文件，自动建立向量索引
+- **文件删除** — 前端二次确认 + 操作结果反馈
+- **语义搜索** — 全文语义检索，支持 `{ok, result: {memories, resources, skills}}` 格式
+- **实时对话 KB 开关** — 输入框旁 📚 按钮，随时切换是否启用知识库 RAG 增强
+
+### 新用户引导
+
+未安装 openviking 时，访问知识库 Tab 自动显示安装步骤引导。
+可通过 `?mock_no_viking=1` 参数模拟未安装状态，用于测试引导页面。
 
 ## 文件结构
 

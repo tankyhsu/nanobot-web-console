@@ -196,6 +196,27 @@ a { color: var(--link); text-decoration: none; }
 .viking-empty { text-align: center; color: var(--text-dim); padding: 40px 20px; font-size: 14px; }
 .viking-back-btn { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px; margin-right: 8px; }
 .viking-back-btn:hover { background: var(--bg-hover); }
+.viking-toolbar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+.viking-upload-btn { padding: 6px 14px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.viking-upload-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.viking-upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 12px; color: var(--text-dim); transition: border-color 0.2s, background 0.2s; }
+.viking-upload-zone.drag-over { border-color: var(--accent); background: var(--bg-hover); }
+.viking-upload-zone .upload-icon { font-size: 32px; margin-bottom: 8px; }
+.viking-upload-zone p { font-size: 13px; margin-bottom: 8px; }
+.viking-upload-zone .upload-hint { font-size: 11px; color: var(--text-dim); }
+.vi-del-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 3px; opacity: 0; transition: opacity 0.2s; flex-shrink: 0; margin-left: auto; }
+.viking-item:hover .vi-del-btn { opacity: 1; }
+.vi-del-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); }
+.viking-item-row { display: flex; align-items: center; width: 100%; }
+.vi-item-info { flex: 1; min-width: 0; }
+.viking-onboard { padding: 32px 24px; max-width: 520px; margin: 0 auto; }
+.viking-onboard h3 { font-size: 18px; margin-bottom: 8px; color: var(--accent); }
+.viking-onboard p { font-size: 13px; line-height: 1.7; color: var(--text-dim); margin-bottom: 12px; }
+.viking-onboard pre { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 6px; padding: 12px; font-size: 12px; overflow-x: auto; margin-bottom: 12px; color: var(--text); }
+.viking-onboard .ob-step { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
+.viking-onboard .ob-num { background: var(--accent); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0; margin-top: 1px; }
+.viking-onboard .ob-text { font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.viking-onboard .ob-text code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; color: var(--accent); }
 
 /* Settings panel */
 .settings-panel { padding: 16px 20px; overflow-y: auto; height: 100%; }
@@ -343,6 +364,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="empty" data-i18n="emptyHint">Select a session or start a Live Chat</div>
   </div>
   <div class="input-area" id="inputArea" style="display:none;">
+    <button id="kbToggleBtn" onclick="toggleKbMode()" title="Toggle knowledge base" style="padding:10px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);border-radius:6px;cursor:pointer;font-size:16px;flex-shrink:0;" title="📚 知识库">📚</button>
     <input type="text" id="msgInput" placeholder="Type a message..." data-i18n="typeMessage" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)sendMsg()">
     <button onclick="sendMsg()" id="sendBtn" data-i18n="send">Send</button>
   </div>
@@ -603,6 +625,9 @@ function initLang() {
 
 const API = location.origin;
 const WS_URL = `ws://${location.host}/ws/chat`;
+// Support ?mock_no_viking=1 in URL to test onboarding UI without changing server
+const _urlParams = new URLSearchParams(location.search);
+const MOCK_NO_VIKING = _urlParams.get('mock_no_viking') === '1';
 let sessions = [];
 let currentFilter = 'all';
 let currentSession = null;
@@ -613,6 +638,7 @@ let isLiveChat = false;
 let liveChatHtml = '';  // persisted live chat content
 let deleteTarget = null;
 let isComposing = false;
+let useKnowledgeBase = true;  // knowledge base toggle state
 
 // --- Markdown ---
 marked.setOptions({ breaks: true, gfm: true });
@@ -643,7 +669,8 @@ function initTheme() {
 // --- Health ---
 async function checkHealth() {
   try {
-    const r = await fetch(`${API}/health`);
+    const healthUrl = MOCK_NO_VIKING ? `${API}/health?mock_no_viking=1` : `${API}/health`;
+    const r = await fetch(healthUrl);
     const d = await r.json();
     const el = document.getElementById('status');
     const vs = document.getElementById('vikingStatus');
@@ -830,6 +857,7 @@ function openLiveChat() {
     }
     updateUrl({ mode: 'live' });
     closeSidebar();
+    updateKbBtnState();
     // Only connect WS if not already connected
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       connectWS();
@@ -885,12 +913,31 @@ function connectWS() {
   ws.onerror = () => {};
 }
 
+function toggleKbMode() {
+  useKnowledgeBase = !useKnowledgeBase;
+  const btn = document.getElementById('kbToggleBtn');
+  if (btn) {
+    btn.style.background = useKnowledgeBase ? 'var(--accent)' : 'var(--bg-input)';
+    btn.style.color = useKnowledgeBase ? '#fff' : 'var(--text)';
+    btn.title = useKnowledgeBase ? '📚 知识库：开启 (点击关闭)' : '📚 知识库：关闭 (点击开启)';
+  }
+}
+
+function updateKbBtnState() {
+  const btn = document.getElementById('kbToggleBtn');
+  if (btn) {
+    btn.style.background = useKnowledgeBase ? 'var(--accent)' : 'var(--bg-input)';
+    btn.style.color = useKnowledgeBase ? '#fff' : 'var(--text)';
+    btn.title = useKnowledgeBase ? '📚 知识库：开启 (点击关闭)' : '📚 知识库：关闭 (点击开启)';
+  }
+}
+
 function sendMsg() {
   const input = document.getElementById('msgInput');
   const msg = input.value.trim();
   if (!msg || !ws || ws.readyState !== WebSocket.OPEN) return;
   appendUserMsg(msg);
-  ws.send(JSON.stringify({ message: msg, session: 'ws:console' }));
+  ws.send(JSON.stringify({ message: msg, session: 'ws:console', use_kb: useKnowledgeBase }));
   input.value = '';
 }
 
@@ -1631,12 +1678,49 @@ function renderVikingBrowser() {
         <input type="text" id="vikingSearchInput" placeholder="${t('searchKB')}" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)vikingSearch()">
         <button onclick="vikingSearch()">${t('search')}</button>
       </div>
+      <div class="viking-toolbar">
+        <button class="viking-upload-btn" onclick="vikingOpenUpload()">📤 上传文件</button>
+        <span style="font-size:12px;color:var(--text-dim);">支持 .txt .md .pdf 等文档格式</span>
+        <input type="file" id="vikingFileInput" style="display:none" accept=".txt,.md,.pdf,.doc,.docx,.csv,.json,.yaml,.yml" multiple onchange="vikingHandleFiles(this.files)">
+      </div>
+      <div id="vikingUploadZone" class="viking-upload-zone" style="display:none;margin:8px 12px 0;">
+        <div class="upload-icon">📂</div>
+        <p>拖拽文件到此处，或点击选择文件</p>
+        <div class="upload-hint">支持 txt / md / pdf / doc / csv / json 等文档格式</div>
+      </div>
       <div class="viking-breadcrumb" id="vikingBreadcrumb"></div>
       <div class="viking-content" id="vikingContent">
         <div class="viking-empty">${t('loading')}</div>
       </div>
     </div>`;
+  // Setup drag-and-drop for upload zone
+  const zone = document.getElementById('vikingUploadZone');
+  if (zone) {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) vikingHandleFiles(e.dataTransfer.files);
+    });
+    zone.addEventListener('click', () => document.getElementById('vikingFileInput')?.click());
+  }
+  // Also setup drag-over on entire panel
+  const panel = document.querySelector('.viking-panel');
+  if (panel) {
+    panel.addEventListener('dragover', e => { e.preventDefault(); showVikingUploadZone(true); });
+  }
   vikingLs(vikingCurrentUri);
+}
+
+function showVikingUploadZone(show) {
+  const zone = document.getElementById('vikingUploadZone');
+  if (zone) zone.style.display = show ? 'block' : 'none';
+}
+
+function vikingOpenUpload() {
+  showVikingUploadZone(true);
+  document.getElementById('vikingFileInput')?.click();
 }
 
 function buildBreadcrumb(uri) {
@@ -1661,38 +1745,136 @@ async function vikingLs(uri) {
   if (!content) return;
   content.innerHTML = '<div class="viking-empty">' + t('loading') + '</div>';
   try {
-    const r = await fetch(`${API}/api/viking/ls?uri=${encodeURIComponent(uri)}`);
+    const lsUrl = MOCK_NO_VIKING
+      ? `${API}/api/viking/ls?uri=${encodeURIComponent(uri)}&mock_no_viking=1`
+      : `${API}/api/viking/ls?uri=${encodeURIComponent(uri)}`;
+    const r = await fetch(lsUrl);
+    if (r.status === 503) {
+      // Viking not initialized — show onboarding
+      renderVikingOnboarding(content);
+      return;
+    }
     const d = await r.json();
-    const result = d.result || '';
-    if (result.includes('disabled') || result.includes('not initialized')) {
-      content.innerHTML = '<div class="viking-empty">' + t('vikingUnavailable') + '</div>';
+    const result = d.result;
+
+    // Handle disabled/error string (old viking_service text mode)
+    if (typeof result === 'string') {
+      if (result.includes('disabled') || result.includes('not initialized') || result.includes('unavailable')) {
+        renderVikingOnboarding(content);
+        return;
+      }
+      // Old text format: parse lines like "  [D] name (size b)"
+      const lines = result.split('\n').slice(1);
+      if (lines.length === 0 || result.includes('empty') || result.includes('为空')) {
+        content.innerHTML = renderVikingEmpty();
+        return;
+      }
+      content.innerHTML = lines.map(line => {
+        const m = line.match(/^\s*\[([DF])\]\s+(.+?)\s+\((\d+)b\)\s*$/);
+        if (!m) return '';
+        const [, marker, name, size] = m;
+        const isDir = marker === 'D';
+        if (name.startsWith('.')) return '';
+        const itemUri = uri.replace(/\/?$/, '/') + name;
+        return renderVikingItem(isDir, name, parseInt(size), itemUri, isDir ? itemUri + '/' : itemUri);
+      }).filter(Boolean).join('') || '<div class="viking-empty">' + t('noItems') + '</div>';
       return;
     }
-    // Parse the text result from viking_service.ls()
-    const lines = result.split('\n').slice(1); // skip header
-    if (lines.length === 0 || result.includes('empty')) {
-      content.innerHTML = '<div class="viking-empty">' + t('emptyDir') + '</div>';
+
+    // New JSON format: result is {ok, result: [{uri, size, isDir, modTime, abstract},...]}
+    // or result might be a plain array
+    let items = [];
+    if (result && typeof result === 'object') {
+      if (Array.isArray(result)) {
+        items = result;
+      } else if (result.ok !== undefined && Array.isArray(result.result)) {
+        items = result.result;
+      } else if (result.ok === false) {
+        content.innerHTML = '<div class="viking-empty">⚠️ ' + escHtml(result.error || 'Error') + '</div>';
+        return;
+      }
+    }
+
+    if (items.length === 0) {
+      content.innerHTML = renderVikingEmpty();
       return;
     }
-    content.innerHTML = lines.map(line => {
-      const m = line.match(/^\s*(📁|📄)\s*(.+?)\s*\((\d+)b\)\s*$/);
-      if (!m) return '';
-      const [, icon, name, size] = m;
-      const isDir = icon === '📁';
-      const itemUri = uri.endsWith('/') ? uri + name : uri + '/' + name;
-      if (name.startsWith('.')) return ''; // hide hidden files
-      const onclick = isDir
-        ? `vikingLs('${itemUri}/')`
-        : `vikingReadResource('${itemUri}')`;
-      return `<div class="viking-item" onclick="${onclick}">
-        <span class="vi-icon">${icon}</span>
-        <span class="vi-name">${escHtml(name)}</span>
-        <div class="vi-meta">${isDir ? t('directory') : formatSize(parseInt(size))}</div>
-      </div>`;
-    }).filter(Boolean).join('') || '<div class="viking-empty">' + t('noItems') + '</div>';
+
+    // Sort: dirs first, then by name
+    items = items.filter(item => {
+      const n = (item.uri || '').split('/').filter(Boolean).pop() || '';
+      return !n.startsWith('.');
+    });
+    items.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return (a.uri || '').localeCompare(b.uri || '');
+    });
+
+    content.innerHTML = items.map(item => {
+      const rawUri = item.uri || '';
+      const name = rawUri.split('/').filter(Boolean).pop() || rawUri;
+      const isDir = !!item.isDir;
+      const size = item.size || 0;
+      const childUri = isDir ? (rawUri.endsWith('/') ? rawUri : rawUri + '/') : rawUri;
+      return renderVikingItem(isDir, name, size, rawUri, childUri, item.abstract);
+    }).filter(Boolean).join('');
   } catch(e) {
     content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
   }
+}
+
+function renderVikingEmpty() {
+  return `<div class="viking-upload-zone" style="margin-top:8px" onclick="vikingOpenUpload()">
+    <div class="upload-icon">📂</div>
+    <p>知识库为空 — 点击或拖拽文件开始导入</p>
+    <div class="upload-hint">支持 txt / md / pdf / doc / csv 等文档格式</div>
+  </div>`;
+}
+
+function renderVikingOnboarding(container) {
+  container.innerHTML = `<div class="viking-onboard">
+    <h3>🧠 安装 nanobot-viking 知识库</h3>
+    <p>开启后，nanobot 将能从知识库中检索上下文，显著提升回答质量。</p>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">只需一步：</p>
+    <pre style="font-size:14px;background:var(--code-bg);border:1px solid var(--accent);border-radius:6px;padding:14px 16px;color:var(--accent);font-weight:700;margin-bottom:10px">pip install openviking</pre>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">安装后重启 <code>server.py</code>，刷新页面即可。</p>
+
+    <details style="margin:0 0 16px;border:1px solid var(--border);border-radius:6px;padding:0">
+      <summary style="padding:10px 14px;cursor:pointer;font-size:13px;color:var(--text-dim);user-select:none">
+        ❓ 安装失败或遇到问题？
+      </summary>
+      <div style="padding:12px 14px 14px;border-top:1px solid var(--border)">
+        <p style="font-size:13px;margin-bottom:8px">尝试国内镜像源：</p>
+        <pre style="font-size:12px;margin-bottom:12px">pip install -i https://pypi.tuna.tsinghua.edu.cn/simple openviking</pre>
+        <p style="font-size:13px;margin-bottom:4px">GitHub 仓库：<a href="https://github.com/tankyhsu/nanobot-viking" target="_blank" style="color:var(--accent)">https://github.com/tankyhsu/nanobot-viking</a></p>
+      </div>
+    </details>
+
+    <button onclick="location.reload()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🔄 刷新检测</button>
+  </div>`;
+}
+
+function renderVikingItem(isDir, name, size, uri, navUri, abstract) {
+  const icon = isDir ? '📁' : '📄';
+  const meta = isDir ? t('directory') : formatSize(size);
+  const safeUri = escHtml(uri);
+  const safeNavUri = navUri.replace(/'/g, "\\'");
+  const onclick = isDir
+    ? `vikingLs('${safeNavUri}')`
+    : `vikingReadResource('${safeNavUri}')`;
+  const abstractHtml = abstract ? `<div class="vi-meta" style="margin-top:2px;max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(abstract.substring(0,120))}</div>` : '';
+  return `<div class="viking-item" onclick="${onclick}">
+    <div class="viking-item-row">
+      <span class="vi-icon">${icon}</span>
+      <div class="vi-item-info">
+        <div class="vi-name">${escHtml(name)}</div>
+        <div class="vi-meta">${meta}</div>
+        ${abstractHtml}
+      </div>
+      ${!isDir ? `<button class="vi-del-btn" title="删除" onclick="event.stopPropagation();vikingDeleteResource('${safeUri}','${escHtml(name)}')">🗑</button>` : ''}
+    </div>
+  </div>`;
 }
 
 function formatSize(bytes) {
@@ -1705,29 +1887,45 @@ async function vikingReadResource(uri) {
   const content = document.getElementById('vikingContent');
   if (!content) return;
   content.innerHTML = '<div class="viking-empty">' + t('loading') + '</div>';
+  const name = uri.split('/').filter(Boolean).pop();
+  const backUri = vikingCurrentUri.replace(/[^/]+\/?$/, '') || 'viking://resources/';
   try {
-    // Try to get abstract first, then full read
-    const [absR, readR] = await Promise.allSettled([
-      fetch(`${API}/api/viking/search`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({query: uri.split('/').pop(), limit: 1})
-      }),
-      // We don't have a direct read endpoint via HTTP, so show the abstract
-      fetch(`${API}/api/viking/ls?uri=${encodeURIComponent(uri)}`)
-    ]);
-    // Show resource detail view
-    const name = uri.split('/').filter(Boolean).pop();
+    const r = await fetch(`${API}/api/viking/get?uri=${encodeURIComponent(uri)}`);
+    const d = await r.json();
+    const body = (d.content && d.content.trim()) ? d.content : '（内容为空）';
     content.innerHTML = `
       <div class="viking-detail">
-        <button class="viking-back-btn" onclick="vikingLs('${vikingCurrentUri.replace(/[^/]+\/?$/, '')}')">${t('back')}</button>
+        <button class="viking-back-btn" onclick="vikingLs('${escHtml(backUri)}')">${t('back')}</button>
         <h3>${escHtml(name)}</h3>
         <div class="vd-meta">URI: ${escHtml(uri)}</div>
-        <div class="vd-body">${escHtml(name)} - Resource details loaded from Viking.</div>
+        <div class="vd-body">${renderMd(body)}</div>
       </div>`;
   } catch(e) {
     content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
   }
+}
+
+function _vikingBackToListBtn() {
+  return `<button class="viking-back-btn" onclick="vikingLs(vikingCurrentUri)" style="margin-bottom:10px">← ${t('back')}</button>`;
+}
+
+function _renderSearchItems(items, query) {
+  if (!items || items.length === 0) {
+    return '<div class="viking-empty">' + t('noResults', {query}) + '</div>';
+  }
+  return items.map(item => {
+    const uri = item.uri || item.resource_uri || '';
+    const score = item.score != null ? ` <span style="opacity:.5;font-size:11px">${(item.score*100).toFixed(0)}%</span>` : '';
+    const snippet = item.content || item.abstract || item.text || JSON.stringify(item);
+    const isMemory = item.context_type === 'memory' || uri.includes('memory') || uri.includes('记忆');
+    const typeClass = isMemory ? 'vr-memory' : 'vr-resource';
+    const typeLabel = isMemory ? 'Memory' : 'Resource';
+    return `<div class="viking-result">
+      <span class="vr-type ${typeClass}">${typeLabel}</span>${score}
+      <div class="vr-uri" style="font-size:11px;opacity:.6;margin-bottom:4px">${escHtml(uri)}</div>
+      <div class="vr-content">${renderMd(String(snippet))}</div>
+    </div>`;
+  }).join('');
 }
 
 async function vikingSearch() {
@@ -1739,7 +1937,7 @@ async function vikingSearch() {
   if (!content) return;
   content.innerHTML = '<div class="viking-empty">' + t('searching') + '</div>';
   const bc = document.getElementById('vikingBreadcrumb');
-  if (bc) bc.innerHTML = `Search: "${escHtml(query)}"`;
+  if (bc) bc.innerHTML = `<button class="viking-back-btn" onclick="vikingLs(vikingCurrentUri)" style="margin-right:6px">← ${t('back')}</button> Search: "${escHtml(query)}"`;
   try {
     const r = await fetch(`${API}/api/viking/search`, {
       method: 'POST',
@@ -1747,20 +1945,39 @@ async function vikingSearch() {
       body: JSON.stringify({query: query, limit: 10})
     });
     const d = await r.json();
-    const result = d.result || '';
-    if (result.includes('no result') || result.includes('无结果')) {
-      content.innerHTML = '<div class="viking-empty">' + t('noResults', {query}) + '</div>';
+    const result = d.result;
+
+    // New format: {ok, result: {memories, resources, skills, total}}
+    if (result && typeof result === 'object' && !Array.isArray(result) && result.ok !== undefined) {
+      const allItems = [
+        ...(result.result && result.result.memories ? result.result.memories : []),
+        ...(result.result && result.result.resources ? result.result.resources : []),
+        ...(result.result && result.result.skills ? result.result.skills : []),
+      ];
+      content.innerHTML = _vikingBackToListBtn() + _renderSearchItems(allItems, query);
+      return;
+    }
+
+    // Flat array format
+    if (Array.isArray(result)) {
+      content.innerHTML = _vikingBackToListBtn() + _renderSearchItems(result, query);
+      return;
+    }
+
+    // Old text format (string)
+    const resultStr = typeof result === 'string' ? result : '';
+    if (!resultStr || resultStr.includes('no result') || resultStr.includes('无结果')) {
+      content.innerHTML = _vikingBackToListBtn() + '<div class="viking-empty">' + t('noResults', {query}) + '</div>';
       return;
     }
     // Parse search results
-    const blocks = result.split('\n\n').slice(1); // skip header
+    const blocks = resultStr.split('\n\n').slice(1); // skip header
     if (blocks.length === 0) {
-      content.innerHTML = '<div class="viking-empty">' + t('noResultsGeneric') + '</div>';
+      content.innerHTML = _vikingBackToListBtn() + '<div class="viking-empty">' + t('noResultsGeneric') + '</div>';
       return;
     }
-    content.innerHTML = blocks.map(block => {
+    content.innerHTML = _vikingBackToListBtn() + blocks.map(block => {
       const isMemory = block.startsWith('[memory]') || block.startsWith('[记忆]');
-      const isResource = block.startsWith('[resource') || block.startsWith('[资源');
       const typeClass = isMemory ? 'vr-memory' : 'vr-resource';
       const typeLabel = isMemory ? 'Memory' : 'Resource';
       return `<div class="viking-result">
@@ -1769,7 +1986,67 @@ async function vikingSearch() {
       </div>`;
     }).join('');
   } catch(e) {
-    content.innerHTML = '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
+    content.innerHTML = _vikingBackToListBtn() + '<div class="viking-empty">' + t('error') + escHtml(e.message) + '</div>';
+  }
+}
+
+// --- Viking Upload ---
+async function vikingHandleFiles(files) {
+  if (!files || files.length === 0) return;
+  showVikingUploadZone(false);
+  const content = document.getElementById('vikingContent');
+  if (content) content.innerHTML = '<div class="viking-empty">⏳ 正在上传并导入知识库，请稍候...</div>';
+  const results = [];
+  for (const file of Array.from(files)) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch(`${API}/api/viking/upload`, { method: 'POST', body: fd });
+      const d = await r.json();
+      results.push({ name: file.name, ok: r.ok, msg: d.result || d.detail || '' });
+    } catch(e) {
+      results.push({ name: file.name, ok: false, msg: e.message });
+    }
+  }
+  // Show result summary
+  if (content) {
+    content.innerHTML = `<div style="padding:16px">
+      <h3 style="margin-bottom:12px;font-size:15px">上传结果</h3>
+      ${results.map(r => `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+        <span>${r.ok ? '✅' : '❌'}</span>
+        <div><div style="font-size:13px;font-weight:500">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-dim)">${escHtml(r.msg)}</div></div>
+      </div>`).join('')}
+      <button onclick="vikingLs(vikingCurrentUri)" style="margin-top:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">← 返回列表</button>
+    </div>`;
+  }
+  // Reset file input
+  const fi = document.getElementById('vikingFileInput');
+  if (fi) fi.value = '';
+}
+
+// --- Viking Delete ---
+async function vikingDeleteResource(uri, name) {
+  if (!confirm(`确定要从知识库中删除「${name}」吗？此操作不可撤销。`)) return;
+  try {
+    const r = await fetch(`${API}/api/viking/delete`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ uri })
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      alert('删除失败: ' + (d.detail || d.result || r.status));
+      return;
+    }
+    // Check result content: backend returns "已删除: ..." on success, "删除失败: ..." on error
+    if (!d.result || d.result.includes('失败') || d.result.includes('error') || d.result.includes('Error')) {
+      alert('删除失败：' + (d.result || '未知错误'));
+      return;
+    }
+    // Success — refresh listing
+    await vikingLs(vikingCurrentUri);
+  } catch(e) {
+    alert('删除出错: ' + e.message);
   }
 }
 

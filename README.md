@@ -66,7 +66,7 @@ systemctl enable --now nanobot-api
   - **Cron** — Manage nanobot scheduled jobs (add / toggle / trigger / delete) and system crontab. Changes automatically sync to the nanobot gateway.
   - **Prompts** — Edit SOUL.md, AGENTS.md, USER.md in-browser
   - **Info** — Tools, skills, memory viewer
-- **Knowledge Base** *(optional, requires [nanobot-viking](https://github.com/tankyhsu/nanobot-viking))* — Browse `viking://` filesystem, semantic search
+- **Knowledge Base** *(optional, `pip install openviking` to enable)* — Browse `viking://` filesystem, view file contents, upload/delete files, semantic search; shows install guide when not installed
 - **Dark / Light theme**, mobile responsive, URL routing, IME-compatible input
 
 ### API Server
@@ -77,7 +77,7 @@ systemctl enable --now nanobot-api
 - `GET/DELETE /api/sessions/{name}` — Session management
 - `GET/POST /api/config` — View and update agent config
 - `GET/POST /api/cron/jobs` — Nanobot cron job management
-- `/api/viking/*` — Knowledge base *(optional)*
+- `/api/viking/*` — Knowledge base *(optional, requires `pip install openviking`)*
 
 ## WebSocket Protocol
 
@@ -97,12 +97,27 @@ Server pushes:
 
 ## Knowledge Base (Optional)
 
+One command to enable:
+
 ```bash
-# Copy viking_service.py to the same directory as server.py
-cp /path/to/nanobot-viking/viking_service.py .
+pip install openviking
 ```
 
-Detected and initialized automatically on startup.
+Restart `server.py` — it auto-detects and initializes. No files to copy. When not installed, the server runs normally and shows an install guide in the Knowledge Base tab.
+
+### Knowledge Base Features
+
+- **File Browser** — Navigate the `viking://` virtual filesystem with directory support
+- **File Viewer** — Built-in Markdown renderer to read knowledge base files in-browser
+- **File Upload** — Drag-and-drop or click to upload multiple files; auto-indexed for semantic search
+- **File Delete** — Confirmation dialog + error feedback
+- **Semantic Search** — Full-text semantic search; supports `{ok, result: {memories, resources, skills}}` format
+- **Live Chat KB Toggle** — 📚 button next to the input field to enable/disable RAG augmentation per message
+
+### Onboarding
+
+When openviking is not installed, the Knowledge Base tab shows a step-by-step install guide.
+Use `?mock_no_viking=1` to simulate the uninstalled state for testing.
 
 ## File Structure
 
