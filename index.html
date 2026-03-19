@@ -364,7 +364,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="empty" data-i18n="emptyHint">Select a session or start a Live Chat</div>
   </div>
   <div class="input-area" id="inputArea" style="display:none;">
-    <button id="kbToggleBtn" onclick="toggleKbMode()" title="Toggle knowledge base" style="padding:10px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);border-radius:6px;cursor:pointer;font-size:16px;flex-shrink:0;" title="📚 知识库">📚</button>
+    <button id="kbToggleBtn" onclick="toggleKbMode()" style="padding:10px 10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);border-radius:6px;cursor:pointer;font-size:16px;flex-shrink:0;">📚</button>
     <input type="text" id="msgInput" placeholder="Type a message..." data-i18n="typeMessage" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)sendMsg()">
     <button onclick="sendMsg()" id="sendBtn" data-i18n="send">Send</button>
   </div>
@@ -481,6 +481,31 @@ const I18N = {
     empty: 'empty',
     charsTotal: 'chars total',
     reconnecting: 'Reconnecting...',
+    kbOn: '📚 KB: ON (click to disable)',
+    kbOff: '📚 KB: OFF (click to enable)',
+    uploadFile: '📤 Upload File',
+    uploadHint: 'Supports .txt .md .pdf and other document formats',
+    uploadDropHint: 'Drop files here, or click to select',
+    uploadDropHintSub: 'Supports txt / md / pdf / doc / csv / json formats',
+    emptyKB: 'Knowledge base is empty — click or drop files to import',
+    uploadingKB: '⏳ Uploading and importing to knowledge base...',
+    uploadResults: 'Upload Results',
+    backToList: '← Back to List',
+    deleteKBConfirm: 'Delete "{name}" from knowledge base? This cannot be undone.',
+    deleteKBFailed: 'Delete failed: ',
+    deleteKBError: 'Delete error: ',
+    deleteKBUnknown: 'Unknown error',
+    contentEmpty: '(empty content)',
+    onboardTitle: '🧠 Install nanobot-viking Knowledge Base',
+    onboardDesc: 'Once enabled, nanobot can retrieve context from the knowledge base, significantly improving answer quality.',
+    onboardStep: 'Just one step:',
+    onboardRestart: 'After installation, restart <code>server.py</code> and refresh the page.',
+    onboardTrouble: '❓ Installation failed or having issues?',
+    onboardMirror: 'Try a China mirror:',
+    onboardRefresh: '🔄 Refresh to Detect',
+    cronJobNamePlaceholder: 'Job name',
+    cronMsgPlaceholder: 'Message to agent...',
+    cronRequired: 'Name, schedule and message are required',
   },
   zh: {
     connecting: '连接中...',
@@ -578,6 +603,31 @@ const I18N = {
     empty: '空',
     charsTotal: '字符',
     reconnecting: '重连中...',
+    kbOn: '📚 知识库：开启 (点击关闭)',
+    kbOff: '📚 知识库：关闭 (点击开启)',
+    uploadFile: '📤 上传文件',
+    uploadHint: '支持 .txt .md .pdf 等文档格式',
+    uploadDropHint: '拖拽文件到此处，或点击选择文件',
+    uploadDropHintSub: '支持 txt / md / pdf / doc / csv / json 等文档格式',
+    emptyKB: '知识库为空 — 点击或拖拽文件开始导入',
+    uploadingKB: '⏳ 正在上传并导入知识库，请稍候...',
+    uploadResults: '上传结果',
+    backToList: '← 返回列表',
+    deleteKBConfirm: '确定要从知识库中删除「{name}」吗？此操作不可撤销。',
+    deleteKBFailed: '删除失败: ',
+    deleteKBError: '删除出错: ',
+    deleteKBUnknown: '未知错误',
+    contentEmpty: '（内容为空）',
+    onboardTitle: '🧠 安装 nanobot-viking 知识库',
+    onboardDesc: '开启后，nanobot 将能从知识库中检索上下文，显著提升回答质量。',
+    onboardStep: '只需一步：',
+    onboardRestart: '安装后重启 <code>server.py</code>，刷新页面即可。',
+    onboardTrouble: '❓ 安装失败或遇到问题？',
+    onboardMirror: '尝试国内镜像源：',
+    onboardRefresh: '🔄 刷新检测',
+    cronJobNamePlaceholder: '任务名称',
+    cronMsgPlaceholder: '发送给 agent 的消息...',
+    cronRequired: '名称、调度和消息均为必填项',
   }
 };
 
@@ -919,7 +969,7 @@ function toggleKbMode() {
   if (btn) {
     btn.style.background = useKnowledgeBase ? 'var(--accent)' : 'var(--bg-input)';
     btn.style.color = useKnowledgeBase ? '#fff' : 'var(--text)';
-    btn.title = useKnowledgeBase ? '📚 知识库：开启 (点击关闭)' : '📚 知识库：关闭 (点击开启)';
+    btn.title = useKnowledgeBase ? t('kbOn') : t('kbOff');
   }
 }
 
@@ -928,7 +978,7 @@ function updateKbBtnState() {
   if (btn) {
     btn.style.background = useKnowledgeBase ? 'var(--accent)' : 'var(--bg-input)';
     btn.style.color = useKnowledgeBase ? '#fff' : 'var(--text)';
-    btn.title = useKnowledgeBase ? '📚 知识库：开启 (点击关闭)' : '📚 知识库：关闭 (点击开启)';
+    btn.title = useKnowledgeBase ? t('kbOn') : t('kbOff');
   }
 }
 
@@ -1521,7 +1571,7 @@ function renderCronTab(el, jobs, sysEntries) {
     '<div class="cron-add-form">' +
     '<h4>+ ' + t('cronAdd') + '</h4>' +
     '<div class="cron-form-grid">' +
-    '<label>' + t('cronName') + '</label><input id="newCronName" placeholder="Job name">' +
+    '<label>' + t('cronName') + '</label><input id="newCronName" placeholder="' + t('cronJobNamePlaceholder') + '">' +
     '<label>' + t('cronSchedule') + '</label>' +
     '<div style="display:flex;gap:6px">' +
     '<select id="newCronKind" onchange="updateCronScheduleInput()" style="padding:5px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px;flex-shrink:0">' +
@@ -1531,7 +1581,7 @@ function renderCronTab(el, jobs, sysEntries) {
     '</select>' +
     '<input id="newCronVal" placeholder="0 8 * * *">' +
     '</div>' +
-    '<label>' + t('cronMessage') + '</label><textarea id="newCronMsg" placeholder="Message to agent..."></textarea>' +
+    '<label>' + t('cronMessage') + '</label><textarea id="newCronMsg" placeholder="' + t('cronMsgPlaceholder') + '"></textarea>' +
     '</div>' +
     '<button class="cron-btn primary" onclick="cronCreate()">' + t('cronAdd') + '</button>' +
     '<div class="settings-msg" id="cronMsg"></div>' +
@@ -1595,7 +1645,7 @@ async function cronCreate() {
   const kind = document.getElementById('newCronKind').value;
   const val = document.getElementById('newCronVal').value.trim();
   const message = document.getElementById('newCronMsg').value.trim();
-  if (!name || !val || !message) { msg.textContent = 'Name, schedule and message are required'; msg.className = 'settings-msg err'; return; }
+  if (!name || !val || !message) { msg.textContent = t('cronRequired'); msg.className = 'settings-msg err'; return; }
   const body = { name, schedule_kind: kind, message };
   if (kind === 'cron') body.expr = val;
   else if (kind === 'every') body.every_ms = parseFloat(val) * 60000;
@@ -1679,14 +1729,14 @@ function renderVikingBrowser() {
         <button onclick="vikingSearch()">${t('search')}</button>
       </div>
       <div class="viking-toolbar">
-        <button class="viking-upload-btn" onclick="vikingOpenUpload()">📤 上传文件</button>
-        <span style="font-size:12px;color:var(--text-dim);">支持 .txt .md .pdf 等文档格式</span>
+        <button class="viking-upload-btn" onclick="vikingOpenUpload()">${t('uploadFile')}</button>
+        <span style="font-size:12px;color:var(--text-dim);">${t('uploadHint')}</span>
         <input type="file" id="vikingFileInput" style="display:none" accept=".txt,.md,.pdf,.doc,.docx,.csv,.json,.yaml,.yml" multiple onchange="vikingHandleFiles(this.files)">
       </div>
       <div id="vikingUploadZone" class="viking-upload-zone" style="display:none;margin:8px 12px 0;">
         <div class="upload-icon">📂</div>
-        <p>拖拽文件到此处，或点击选择文件</p>
-        <div class="upload-hint">支持 txt / md / pdf / doc / csv / json 等文档格式</div>
+        <p>${t('uploadDropHint')}</p>
+        <div class="upload-hint">${t('uploadDropHintSub')}</div>
       </div>
       <div class="viking-breadcrumb" id="vikingBreadcrumb"></div>
       <div class="viking-content" id="vikingContent">
@@ -1826,32 +1876,32 @@ async function vikingLs(uri) {
 function renderVikingEmpty() {
   return `<div class="viking-upload-zone" style="margin-top:8px" onclick="vikingOpenUpload()">
     <div class="upload-icon">📂</div>
-    <p>知识库为空 — 点击或拖拽文件开始导入</p>
-    <div class="upload-hint">支持 txt / md / pdf / doc / csv 等文档格式</div>
+    <p>${t('emptyKB')}</p>
+    <div class="upload-hint">${t('uploadDropHintSub')}</div>
   </div>`;
 }
 
 function renderVikingOnboarding(container) {
   container.innerHTML = `<div class="viking-onboard">
-    <h3>🧠 安装 nanobot-viking 知识库</h3>
-    <p>开启后，nanobot 将能从知识库中检索上下文，显著提升回答质量。</p>
+    <h3>${t('onboardTitle')}</h3>
+    <p>${t('onboardDesc')}</p>
 
-    <p style="font-size:13px;font-weight:600;margin-bottom:6px">只需一步：</p>
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">${t('onboardStep')}</p>
     <pre style="font-size:14px;background:var(--code-bg);border:1px solid var(--accent);border-radius:6px;padding:14px 16px;color:var(--accent);font-weight:700;margin-bottom:10px">pip install openviking</pre>
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">安装后重启 <code>server.py</code>，刷新页面即可。</p>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">${t('onboardRestart')}</p>
 
     <details style="margin:0 0 16px;border:1px solid var(--border);border-radius:6px;padding:0">
       <summary style="padding:10px 14px;cursor:pointer;font-size:13px;color:var(--text-dim);user-select:none">
-        ❓ 安装失败或遇到问题？
+        ${t('onboardTrouble')}
       </summary>
       <div style="padding:12px 14px 14px;border-top:1px solid var(--border)">
-        <p style="font-size:13px;margin-bottom:8px">尝试国内镜像源：</p>
+        <p style="font-size:13px;margin-bottom:8px">${t('onboardMirror')}</p>
         <pre style="font-size:12px;margin-bottom:12px">pip install -i https://pypi.tuna.tsinghua.edu.cn/simple openviking</pre>
-        <p style="font-size:13px;margin-bottom:4px">GitHub 仓库：<a href="https://github.com/tankyhsu/nanobot-viking" target="_blank" style="color:var(--accent)">https://github.com/tankyhsu/nanobot-viking</a></p>
+        <p style="font-size:13px;margin-bottom:4px">GitHub: <a href="https://github.com/tankyhsu/nanobot-viking" target="_blank" style="color:var(--accent)">https://github.com/tankyhsu/nanobot-viking</a></p>
       </div>
     </details>
 
-    <button onclick="location.reload()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🔄 刷新检测</button>
+    <button onclick="location.reload()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">${t('onboardRefresh')}</button>
   </div>`;
 }
 
@@ -1872,7 +1922,7 @@ function renderVikingItem(isDir, name, size, uri, navUri, abstract) {
         <div class="vi-meta">${meta}</div>
         ${abstractHtml}
       </div>
-      ${!isDir ? `<button class="vi-del-btn" title="删除" onclick="event.stopPropagation();vikingDeleteResource('${safeUri}','${escHtml(name)}')">🗑</button>` : ''}
+      ${!isDir ? `<button class="vi-del-btn" title="${t('delete')}" onclick="event.stopPropagation();vikingDeleteResource('${safeUri}','${escHtml(name)}')">🗑</button>` : ''}
     </div>
   </div>`;
 }
@@ -1892,7 +1942,7 @@ async function vikingReadResource(uri) {
   try {
     const r = await fetch(`${API}/api/viking/get?uri=${encodeURIComponent(uri)}`);
     const d = await r.json();
-    const body = (d.content && d.content.trim()) ? d.content : '（内容为空）';
+    const body = (d.content && d.content.trim()) ? d.content : t('contentEmpty');
     content.innerHTML = `
       <div class="viking-detail">
         <button class="viking-back-btn" onclick="vikingLs('${escHtml(backUri)}')">${t('back')}</button>
@@ -1995,7 +2045,7 @@ async function vikingHandleFiles(files) {
   if (!files || files.length === 0) return;
   showVikingUploadZone(false);
   const content = document.getElementById('vikingContent');
-  if (content) content.innerHTML = '<div class="viking-empty">⏳ 正在上传并导入知识库，请稍候...</div>';
+  if (content) content.innerHTML = '<div class="viking-empty">' + t('uploadingKB') + '</div>';
   const results = [];
   for (const file of Array.from(files)) {
     const fd = new FormData();
@@ -2011,12 +2061,12 @@ async function vikingHandleFiles(files) {
   // Show result summary
   if (content) {
     content.innerHTML = `<div style="padding:16px">
-      <h3 style="margin-bottom:12px;font-size:15px">上传结果</h3>
+      <h3 style="margin-bottom:12px;font-size:15px">${t('uploadResults')}</h3>
       ${results.map(r => `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
         <span>${r.ok ? '✅' : '❌'}</span>
         <div><div style="font-size:13px;font-weight:500">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-dim)">${escHtml(r.msg)}</div></div>
       </div>`).join('')}
-      <button onclick="vikingLs(vikingCurrentUri)" style="margin-top:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">← 返回列表</button>
+      <button onclick="vikingLs(vikingCurrentUri)" style="margin-top:12px;padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">${t('backToList')}</button>
     </div>`;
   }
   // Reset file input
@@ -2026,7 +2076,7 @@ async function vikingHandleFiles(files) {
 
 // --- Viking Delete ---
 async function vikingDeleteResource(uri, name) {
-  if (!confirm(`确定要从知识库中删除「${name}」吗？此操作不可撤销。`)) return;
+  if (!confirm(t('deleteKBConfirm', {name}))) return;
   try {
     const r = await fetch(`${API}/api/viking/delete`, {
       method: 'POST',
@@ -2035,18 +2085,18 @@ async function vikingDeleteResource(uri, name) {
     });
     const d = await r.json();
     if (!r.ok) {
-      alert('删除失败: ' + (d.detail || d.result || r.status));
+      alert(t('deleteKBFailed') + (d.detail || d.result || r.status));
       return;
     }
-    // Check result content: backend returns "已删除: ..." on success, "删除失败: ..." on error
+    // Check result content: backend returns success/failure string
     if (!d.result || d.result.includes('失败') || d.result.includes('error') || d.result.includes('Error')) {
-      alert('删除失败：' + (d.result || '未知错误'));
+      alert(t('deleteKBFailed') + (d.result || t('deleteKBUnknown')));
       return;
     }
     // Success — refresh listing
     await vikingLs(vikingCurrentUri);
   } catch(e) {
-    alert('删除出错: ' + e.message);
+    alert(t('deleteKBError') + e.message);
   }
 }
 
