@@ -473,103 +473,47 @@ class VikingService:
 logger = logging.getLogger("nanobot-api")
 
 
-# ---- Streaming AgentLoop (structured WS events via _run_agent_loop override) ----
+# ---- Streaming WebSocket Hook (emits structured events via AgentHook) ----
 
-def _make_streaming_class(base_cls):
-    """Create a StreamingAgentLoop that emits structured events for WebSocket."""
+from nanobot.agent.hook import AgentHook, AgentHookContext
 
-    class StreamingAgentLoop(base_cls):
-        """Overrides _run_agent_loop to emit thinking/tool_call/tool_result events."""
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._event_callback = None
+class WSStreamingHook(AgentHook):
+    """AgentHook that emits structured WS events (thinking/tool_call/tool_result)."""
 
-        def set_event_callback(self, cb):
-            self._event_callback = cb
+    def __init__(self):
+        self._callback = None
 
-        def clear_event_callback(self):
-            self._event_callback = None
+    def set_callback(self, cb):
+        self._callback = cb
 
-        async def _emit(self, event):
-            if self._event_callback:
-                try:
-                    await self._event_callback(event)
-                except Exception:
-                    pass
+    def clear_callback(self):
+        self._callback = None
 
-        async def _run_agent_loop(self, initial_messages, on_progress=None):
-            """Override to emit structured events when _event_callback is set."""
-            if not self._event_callback:
-                return await super()._run_agent_loop(initial_messages, on_progress=on_progress)
+    async def _emit(self, event):
+        if self._callback:
+            try:
+                await self._callback(event)
+            except Exception:
+                pass
 
-            messages = initial_messages
-            iteration = 0
-            final_content = None
-            tools_used = []
+    async def before_iteration(self, context: AgentHookContext) -> None:
+        await self._emit({"type": "thinking", "iteration": context.iteration + 1})
 
-            while iteration < self.max_iterations:
-                iteration += 1
-                await self._emit({"type": "thinking", "iteration": iteration})
-
-                response = await self.provider.chat_with_retry(
-                    messages=messages,
-                    tools=self.tools.get_definitions(),
-                    model=self.model,
-                )
-
-                if response.has_tool_calls:
-                    tool_call_dicts = [
-                        tc.to_openai_tool_call()
-                        for tc in response.tool_calls
-                    ]
-                    messages = self.context.add_assistant_message(
-                        messages, response.content, tool_call_dicts,
-                        reasoning_content=response.reasoning_content,
-                        thinking_blocks=response.thinking_blocks,
-                    )
-                    for tool_call in response.tool_calls:
-                        tools_used.append(tool_call.name)
-                        args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
-                        await self._emit({"type": "tool_call", "name": tool_call.name, "arguments": args_str})
-                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
-                        await self._emit({"type": "tool_result", "name": tool_call.name, "result": result})
-                        messages = self.context.add_tool_result(
-                            messages, tool_call.id, tool_call.name, result,
-                        )
-                else:
-                    clean = self._strip_think(response.content)
-                    if response.finish_reason == "error":
-                        final_content = clean or "Sorry, I encountered an error calling the AI model."
-                        break
-                    messages = self.context.add_assistant_message(
-                        messages, clean,
-                        reasoning_content=response.reasoning_content,
-                        thinking_blocks=response.thinking_blocks,
-                    )
-                    final_content = clean
-                    break
-
-            return final_content, tools_used, messages
-
-    StreamingAgentLoop.__name__ = f"Streaming{base_cls.__name__}"
-    return StreamingAgentLoop
+    async def after_iteration(self, context: AgentHookContext) -> None:
+        if not context.tool_calls:
+            return
+        for i, tc in enumerate(context.tool_calls):
+            args_str = json.dumps(tc.arguments, ensure_ascii=False)
+            await self._emit({"type": "tool_call", "name": tc.name, "arguments": args_str})
+            if context.tool_results and i < len(context.tool_results):
+                await self._emit({"type": "tool_result", "name": tc.name, "result": context.tool_results[i]})
 
 
 SESSIONS_DIR = None  # Set in lifespan from config workspace
 LEGACY_SESSIONS_DIR = Path.home() / ".nanobot" / "sessions"
-CONSOLE_HTML = Path(__file__).parent / "index.html"
-
-DEFAULT_IOT_CONSTRAINT = (
-    "你的回复将通过TTS语音朗读给用户听，请遵守以下规则：\n"
-    "1. 回复格式：只使用纯文字连贯句子，像正常说话一样。"
-    "绝对禁止使用减号、星号、数字编号、项目符号、冒号列举、括号注释、Markdown等任何非自然语言的符号和排版格式。\n"
-    "2. 回复长度：对于普通问答和闲聊，控制在两三句话以内。\n"
-    "3. 重要：如果用户的指令涉及执行操作（比如安装软件、运行命令、创建文件、修改配置等），"
-    "你必须正常调用工具去真正执行，不要因为回复格式限制而跳过执行或编造结果。"
-    "执行完成后再用简短的自然语言告知结果即可。\n"
-    "4. 诚实原则：不确定的事情就说不确定，不要编造信息。"
-)
+_parent = Path(__file__).parent
+CONSOLE_HTML = _parent / "index.html" if (_parent / "index.html").exists() else _parent / "console.html"
 
 # ---- Emotion Detection ----
 
@@ -628,25 +572,59 @@ def _enrich_event(event: dict) -> dict:
 
 
 def _make_provider(config):
-    """Create LiteLLMProvider from config -- mirrors nanobot CLI logic."""
-    from nanobot.providers.litellm_provider import LiteLLMProvider
+    """Create LLM provider from config -- mirrors nanobot CLI logic.
+
+    Routing is driven by ProviderSpec.backend in the registry.
+    """
     from nanobot.providers.base import GenerationSettings
-    p = config.get_provider()
+    from nanobot.providers.registry import find_by_name
+
     model = config.agents.defaults.model
-    if not (p and p.api_key) and not model.startswith("bedrock/"):
-        raise RuntimeError("No API key configured in ~/.nanobot/config.json")
-    provider = LiteLLMProvider(
-        api_key=p.api_key if p else None,
-        api_base=config.get_api_base(),
-        default_model=model,
-        extra_headers=p.extra_headers if p else None,
-        provider_name=config.get_provider_name(),
-    )
+    provider_name = config.get_provider_name(model)
+    p = config.get_provider(model)
+    spec = find_by_name(provider_name) if provider_name else None
+    backend = spec.backend if spec else "openai_compat"
+
+    if backend == "azure_openai":
+        from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
+        if not p or not p.api_key or not p.api_base:
+            raise RuntimeError("Azure OpenAI requires api_key and api_base in config")
+        provider = AzureOpenAIProvider(
+            api_key=p.api_key, api_base=p.api_base, default_model=model,
+        )
+    elif backend == "anthropic":
+        from nanobot.providers.anthropic_provider import AnthropicProvider
+        provider = AnthropicProvider(
+            api_key=p.api_key if p else None,
+            api_base=config.get_api_base(model),
+            default_model=model,
+            extra_headers=p.extra_headers if p else None,
+        )
+    elif backend == "openai_codex":
+        from nanobot.providers.openai_codex_provider import OpenAICodexProvider
+        provider = OpenAICodexProvider(default_model=model)
+    elif backend == "github_copilot":
+        from nanobot.providers.github_copilot_provider import GitHubCopilotProvider
+        provider = GitHubCopilotProvider(default_model=model)
+    else:
+        from nanobot.providers.openai_compat_provider import OpenAICompatProvider
+        needs_key = not (p and p.api_key)
+        exempt = spec and (getattr(spec, 'is_oauth', False) or getattr(spec, 'is_local', False) or getattr(spec, 'is_direct', False))
+        if needs_key and not exempt and not model.startswith("bedrock/"):
+            raise RuntimeError("No API key configured in ~/.nanobot/config.json")
+        provider = OpenAICompatProvider(
+            api_key=p.api_key if p else None,
+            api_base=config.get_api_base(model),
+            default_model=model,
+            extra_headers=p.extra_headers if p else None,
+            spec=spec,
+        )
+
     defaults = config.agents.defaults
     provider.generation = GenerationSettings(
         temperature=defaults.temperature,
         max_tokens=defaults.max_tokens,
-        reasoning_effort=getattr(defaults, 'reasoning_effort', None),
+        reasoning_effort=defaults.reasoning_effort,
     )
     return provider
 
@@ -656,6 +634,7 @@ bus: MessageBus = None
 viking = None
 _config = None
 _feishu_client = None
+_ws_hook: WSStreamingHook = None
 _gateway_restart_task: asyncio.Task | None = None
 
 
@@ -753,29 +732,29 @@ async def _feishu_outbound_handler(msg):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent, bus, viking, _config, SESSIONS_DIR
+    global agent, bus, viking, _config, _ws_hook, SESSIONS_DIR
     config = load_config()
     _config = config
     SESSIONS_DIR = config.workspace_path / "sessions"
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
+    _ws_hook = WSStreamingHook()
     agent_kwargs = dict(
         bus=bus, provider=provider, workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
         context_window_tokens=config.agents.defaults.context_window_tokens,
+        web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         mcp_servers=getattr(config.tools, 'mcp_servers', None),
         channels_config=config.channels,
+        timezone=getattr(config.agents.defaults, 'timezone', None),
+        hooks=[_ws_hook],
     )
-    # Compat: web_search_config was added in nanobot v0.1.4.post3+; skip on older versions
-    import inspect as _inspect
-    if 'web_search_config' in _inspect.signature(AgentLoop.__init__).parameters:
-        agent_kwargs['web_search_config'] = config.tools.web.search
     # Try ClawWork economic tracking
     if CLAWWORK_AVAILABLE:
         cw_cfg = load_clawwork_config()
@@ -821,15 +800,12 @@ async def lifespan(app: FastAPI):
                 signature=cw_cfg.signature,
                 data_path=data_path,
             )
-            StreamingCW = _make_streaming_class(ClawWorkAgentLoop)
-            agent = StreamingCW(clawwork_state=cw_state, **agent_kwargs)
+            agent = ClawWorkAgentLoop(clawwork_state=cw_state, **agent_kwargs)
             print(f"[nanobot-api] ClawWork enabled (balance=${cw_cfg.initial_balance:.0f}, sig={cw_cfg.signature})")
         else:
-            StreamingBase = _make_streaming_class(AgentLoop)
-            agent = StreamingBase(**agent_kwargs)
+            agent = AgentLoop(**agent_kwargs)
     else:
-        StreamingBase = _make_streaming_class(AgentLoop)
-        agent = StreamingBase(**agent_kwargs)
+        agent = AgentLoop(**agent_kwargs)
     # Initialize Feishu client and start outbound message dispatcher
     _init_feishu_client(config)
 
@@ -1004,9 +980,10 @@ async def chat_completions(req: ChatRequest):
         raise HTTPException(400, "No user message found")
     session_key = f"api:{uuid.uuid4().hex[:8]}"
     augmented = await _augment_with_memory(user_msg)
-    response = await agent.process_direct(
+    result = await agent.process_direct(
         content=augmented, session_key=session_key, channel="api", chat_id="api",
     )
+    response = result.content if result else ""
     clean = _clean_for_tts(response)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -1023,9 +1000,10 @@ async def simple_chat(req: SimpleRequest):
     # Memory augmentation (skip if use_kb=False)
     augmented = await _augment_with_memory(req.message) if req.use_kb else req.message
     content = f"{augmented}\n\n（回复要求：{req.constraint}）" if req.constraint else augmented
-    response = await agent.process_direct(
+    result = await agent.process_direct(
         content=content, session_key=req.session, channel="api", chat_id=req.session,
     )
+    response = result.content if result else ""
     clean = _clean_for_tts(response)
     emotion = _detect_emotion(clean)
     return SimpleResponse(response=clean, session=req.session, timestamp=time.time(), emotion=emotion)
@@ -1075,10 +1053,11 @@ async def websocket_chat(ws: WebSocket):
 
             hb_task = asyncio.create_task(heartbeat())
             try:
-                agent.set_event_callback(on_event)
-                response = await agent.process_direct(
+                _ws_hook.set_callback(on_event)
+                result = await agent.process_direct(
                     content=content, session_key=session, channel="ws", chat_id=session,
                 )
+                response = result.content if result else ""
                 clean = _clean_for_tts(response)
                 emotion = _detect_emotion(clean)
                 await ws.send_json({
@@ -1092,7 +1071,7 @@ async def websocket_chat(ws: WebSocket):
                 await ws.send_json({"type": "error", "message": str(e)})
             finally:
                 hb_task.cancel()
-                agent.clear_event_callback()
+                _ws_hook.clear_callback()
     except WebSocketDisconnect:
         pass
 
