@@ -575,6 +575,8 @@ def _make_provider(config):
     """Create LLM provider from config -- mirrors nanobot CLI logic.
 
     Routing is driven by ProviderSpec.backend in the registry.
+    Returns (provider, model_name) where model_name may have the provider
+    prefix stripped for direct API providers.
     """
     from nanobot.providers.base import GenerationSettings
     from nanobot.providers.registry import find_by_name
@@ -584,6 +586,11 @@ def _make_provider(config):
     p = config.get_provider(model)
     spec = find_by_name(provider_name) if provider_name else None
     backend = spec.backend if spec else "openai_compat"
+
+    # Strip "provider/" prefix for direct API providers that don't handle it.
+    # e.g. "zhipu/glm-4.6v" -> "glm-4.6v" for Zhipu's OpenAI-compatible API.
+    if spec and not spec.is_gateway and not spec.strip_model_prefix and "/" in model:
+        model = model.split("/", 1)[1]
 
     if backend == "azure_openai":
         from nanobot.providers.azure_openai_provider import AzureOpenAIProvider
@@ -626,7 +633,7 @@ def _make_provider(config):
         max_tokens=defaults.max_tokens,
         reasoning_effort=defaults.reasoning_effort,
     )
-    return provider
+    return provider, model
 
 
 agent: AgentLoop = None
@@ -737,12 +744,12 @@ async def lifespan(app: FastAPI):
     _config = config
     SESSIONS_DIR = config.workspace_path / "sessions"
     bus = MessageBus()
-    provider = _make_provider(config)
+    provider, model = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
     _ws_hook = WSStreamingHook()
     agent_kwargs = dict(
         bus=bus, provider=provider, workspace=config.workspace_path,
-        model=config.agents.defaults.model,
+        model=model,
         max_iterations=config.agents.defaults.max_tool_iterations,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         web_search_config=config.tools.web.search,
