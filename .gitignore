@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
-scripts/
+scripts/*
+!scripts/ci_check.py
