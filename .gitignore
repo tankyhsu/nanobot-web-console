@@ -1,5 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+*.egg-info/
+dist/
+build/
 scripts/*
 !scripts/ci_check.py

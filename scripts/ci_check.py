@@ -13,6 +13,7 @@ import importlib
 import types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PKG_DIR = os.path.join(ROOT, "nanobot_web_console")
 ERRORS: list[str] = []
 WARNINGS: list[str] = []
 
@@ -36,7 +37,7 @@ def ok(msg: str):
 # ---------------------------------------------------------------------------
 def check_python_syntax():
     print("\n=== Python Syntax Check ===")
-    server_py = os.path.join(ROOT, "server.py")
+    server_py = os.path.join(PKG_DIR, "server.py")
     if not os.path.isfile(server_py):
         error("server.py not found")
         return
@@ -129,8 +130,6 @@ EXPECTED_ROUTES = [
     ("GET", "/api/config"),
     ("POST", "/api/config"),
     ("POST", "/api/config/provider"),
-    ("POST", "/api/restart"),
-    ("POST", "/api/restart/nanobot"),
     ("POST", "/api/config/prompt"),
     ("GET", "/api/cron/jobs"),
     ("POST", "/api/cron/jobs"),
@@ -147,7 +146,7 @@ EXPECTED_ROUTES = [
 
 def check_routes():
     print("\n=== Route Completeness Check ===")
-    server_py = os.path.join(ROOT, "server.py")
+    server_py = os.path.join(PKG_DIR, "server.py")
     if not os.path.isfile(server_py):
         error("server.py not found")
         return
@@ -203,7 +202,7 @@ REQUIRED_JS_FUNCTIONS = [
 
 def check_index_html():
     print("\n=== index.html Validation ===")
-    index_html = os.path.join(ROOT, "index.html")
+    index_html = os.path.join(PKG_DIR, "index.html")
     if not os.path.isfile(index_html):
         error("index.html not found")
         return
@@ -239,7 +238,7 @@ def check_index_html():
 # ---------------------------------------------------------------------------
 def check_i18n():
     print("\n=== i18n Completeness Check ===")
-    index_html = os.path.join(ROOT, "index.html")
+    index_html = os.path.join(PKG_DIR, "index.html")
     if not os.path.isfile(index_html):
         error("index.html not found")
         return

@@ -4,7 +4,7 @@
 
 A web console + API server for [nanobot](https://github.com/HKUDS/nanobot) — an ultra-lightweight personal AI assistant framework.
 
-nanobot provides a powerful agent core (tools, skills, memory, channels) but no HTTP API or web UI. This project adds both: a FastAPI server (`server.py`) and a single-file web console (`index.html`).
+nanobot provides a powerful agent core (tools, skills, memory, channels) but no HTTP API or web UI. This project adds both: a FastAPI server and a single-file web console.
 
 ## Screenshots
 
@@ -26,18 +26,45 @@ nanobot provides a powerful agent core (tools, skills, memory, channels) but no 
 
 ## Quick Start
 
-**Prerequisites:** Python 3.11+, nanobot installed and configured (`~/.nanobot/config.json`)
+**Prerequisites:** Python 3.11+, [nanobot](https://github.com/HKUDS/nanobot) installed and configured (`~/.nanobot/config.json`)
+
+### Install via pip
 
 ```bash
-pip install nanobot-ai fastapi uvicorn pydantic
-git clone https://github.com/tankyhsu/nanobot-web-console.git
-cd nanobot-web-console
-python server.py
+pip install nanobot-ai         # install nanobot first
+pip install nanobot-web-console
+nanobot-console
 ```
 
 Open `http://localhost:18790`.
 
-### Run as systemd service
+### Install from source
+
+```bash
+pip install nanobot-ai
+git clone https://github.com/tankyhsu/nanobot-web-console.git
+cd nanobot-web-console
+pip install .
+nanobot-console
+```
+
+### CLI options
+
+```
+nanobot-console              # default: 0.0.0.0:18790
+nanobot-console --port 8080  # custom port
+nanobot-console --host 127.0.0.1  # bind to localhost only
+nanobot-console --reload     # auto-reload for development
+nanobot-console --version    # show version
+```
+
+You can also run as a Python module:
+
+```bash
+python -m nanobot_web_console --port 8080
+```
+
+### Run as systemd service (Linux)
 
 ```ini
 # /etc/systemd/system/nanobot-api.service
@@ -47,8 +74,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /path/to/server.py
-WorkingDirectory=/path/to/nanobot-web-console
+ExecStart=/usr/local/bin/nanobot-console
 Environment=HOME=/root
 Restart=always
 RestartSec=5
@@ -71,7 +97,7 @@ systemctl enable --now nanobot-api
   - **Agent** — Model, temperature, max tokens, iterations, context window tokens
   - **Channels** — `sendProgress` / `sendToolHints` toggles
   - **Providers** — Edit API keys and base URLs per provider
-  - **Cron** — Manage nanobot scheduled jobs (add / toggle / trigger / delete) and system crontab. Changes automatically sync to the nanobot gateway.
+  - **Cron** — Manage nanobot scheduled jobs (add / toggle / trigger / delete) and system crontab
   - **Prompts** — Edit SOUL.md, AGENTS.md, USER.md in-browser
   - **Info** — Tools, skills, memory viewer
 - **Knowledge Base** *(optional, `pip install openviking` to enable)* — Browse `viking://` filesystem, view file contents, upload/delete files, semantic search; shows install guide when not installed
@@ -96,9 +122,10 @@ Client sends:
 
 Server pushes:
 ```json
-{"type": "thinking", "iteration": 1}
-{"type": "tool_call", "name": "exec", "arguments": "{\"command\": \"df -h\"}"}
-{"type": "tool_result", "name": "exec", "result": "..."}
+{"type": "thinking", "content": "..."}
+{"type": "stream", "delta": "..."}
+{"type": "stream_end", "resuming": false}
+{"type": "tool_call", "content": "..."}
 {"type": "heartbeat", "timestamp": 1739800015.0}
 {"type": "final", "content": "...", "emotion": "happy", "session": "ws:device-id"}
 ```
@@ -111,7 +138,7 @@ One command to enable:
 pip install openviking
 ```
 
-Restart `server.py` — it auto-detects and initializes. No files to copy. When not installed, the server runs normally and shows an install guide in the Knowledge Base tab.
+Restart `nanobot-console` — it auto-detects and initializes. When not installed, the server runs normally and shows an install guide in the Knowledge Base tab.
 
 ### Knowledge Base Features
 
@@ -119,32 +146,25 @@ Restart `server.py` — it auto-detects and initializes. No files to copy. When 
 - **File Viewer** — Built-in Markdown renderer to read knowledge base files in-browser
 - **File Upload** — Drag-and-drop or click to upload multiple files; auto-indexed for semantic search
 - **File Delete** — Confirmation dialog + error feedback
-- **Semantic Search** — Full-text semantic search; supports `{ok, result: {memories, resources, skills}}` format
-- **Live Chat KB Toggle** — 📚 button next to the input field to enable/disable RAG augmentation per message
-
-### Onboarding
-
-When openviking is not installed, the Knowledge Base tab shows a step-by-step install guide.
-Use `?mock_no_viking=1` to simulate the uninstalled state for testing.
+- **Semantic Search** — Full-text semantic search across all resources
+- **Live Chat KB Toggle** — Button next to the input field to enable/disable RAG augmentation per message
 
 ## File Structure
 
 ```
-server.py      # FastAPI server — nanobot web layer
-index.html     # Web console (single file, zero dependencies)
-screenshots/   # Demo screenshots
+nanobot_web_console/
+  __init__.py    # Package version
+  cli.py         # CLI entry point (nanobot-console command)
+  server.py      # FastAPI server
+  index.html     # Web console (single file, zero dependencies)
+pyproject.toml   # Package metadata
+server.py        # Backward-compatible entry point
 ```
 
 ## Tech Stack
 
-- **server.py** — FastAPI + Uvicorn, imports nanobot internals directly
-- **index.html** — Vanilla JS, CSS custom properties, WebSocket API, [marked.js](https://github.com/markedjs/marked) (CDN)
-
-## SiliconFlow Free Models
-
-If you use [SiliconFlow](https://siliconflow.cn), the embedding (`BAAI/bge-m3`) and VLM (`DeepSeek-OCR`) models used by Viking are available on the free tier.
-
-Referral link for bonus credits: **https://cloud.siliconflow.cn/i/UzI0F3Xv**
+- **Backend** — FastAPI + Uvicorn, imports nanobot internals directly
+- **Frontend** — Vanilla JS, CSS custom properties, WebSocket API, [marked.js](https://github.com/markedjs/marked) (CDN)
 
 ## License
 
